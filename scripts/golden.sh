@@ -124,5 +124,40 @@ for (b1, _), (b2, _) in zip(r1, r2):
 print(f"STEP 3 OK: {len(r1)} variants, {len(labels)} labels, deterministic, storms>=150")
 PYEOF
 
+# --- STEP 4: detection layer (4 modalities) ---
+echo "== VERDICT golden: STEP 4 detection =="
+"$PY" - <<'PYEOF'
+import tempfile
+from backend.overlay.scenarios import gen_clean_cascade
+from backend.ingest.store import EventStore
+from backend.detect.runner import detect
+
+tmp = tempfile.mkdtemp()
+bundle, _ = gen_clean_cascade("gc-verify", 42, fault_service="catalogue", fault_type="cpu")
+store = EventStore(tmp + "/p")
+store.write_case(bundle)
+store.write_topology(bundle.case_id, bundle.topology)
+
+anoms = detect("gc-verify", store_root=tmp + "/p", out_dir=tmp + "/anom", drain_dir=tmp + "/drain")
+assert anoms, "no anomalies detected on scenario"
+
+# schema-valid ids + zero anomalies off-topology
+nodes = set(store.load_topology("gc-verify").nodes)
+off = [a.component_id for a in anoms if a.component_id not in nodes]
+assert not off, f"off-topology anomalies: {off}"
+assert all(0.0 <= a.score <= 1.0 for a in anoms)
+
+# score mass (score x extent) clusters after inject
+inj = bundle.inject_time
+def dt(a): return max(a.window.end - a.window.start, 30.0)
+def da(a):
+    e = max(a.window.end, a.window.start + 30.0)
+    return max(0.0, e - max(a.window.start, inj))
+mt = sum(a.score * dt(a) for a in anoms)
+ma = sum(a.score * da(a) for a in anoms)
+assert ma / mt >= 0.80, f"only {ma/mt:.0%} of anomaly mass after inject"
+print(f"STEP 4 OK: {len(anoms)} anomalies, {ma/mt:.0%} mass after inject, all in topology")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

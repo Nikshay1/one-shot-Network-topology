@@ -354,7 +354,8 @@ def _main(argv: list[str]) -> int:
 
         store = EventStore(args.out)
         n = store.write_case(bundle)
-        print(f"wrote         : {n} rows -> {store.root}")
+        store.write_topology(bundle.case_id, bundle.topology)
+        print(f"wrote         : {n} rows (+ topology.json) -> {store.root}")
     return 0
 
 

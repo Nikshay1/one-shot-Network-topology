@@ -316,6 +316,7 @@ def build_all(
     for variant in reg["variants"]:
         bundle, label = build_variant(variant, base_seed)
         store.write_case(bundle)
+        store.write_topology(bundle.case_id, bundle.topology)
         write_label(Path(labels_dir), bundle.case_id, label.model_dump())
         results.append((bundle, label))
     return results
@@ -337,7 +338,9 @@ def _main(argv: list[str]) -> int:
             print(f"unknown variant {args.variant!r}", file=sys.stderr)
             return 1
         bundle, label = build_variant(variant, args.seed)
-        EventStore(args.out).write_case(bundle)
+        _store = EventStore(args.out)
+        _store.write_case(bundle)
+        _store.write_topology(bundle.case_id, bundle.topology)
         write_label(Path(args.labels_dir), bundle.case_id, label.model_dump())
         print(f"built {bundle.case_id}: {len(bundle.events)} events "
               f"(expected_root_cause={label.expected_root_cause}, tier={label.expected_tier})")

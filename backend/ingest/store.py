@@ -10,11 +10,13 @@ engine. Runnable/testable via CLI without the API server.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
 
 import duckdb
+import networkx as nx
 import polars as pl
 
 from backend.models import EventEnvelope
@@ -167,6 +169,38 @@ class EventStore:
             return int(found) == len(wanted)
         finally:
             con.close()
+
+    # -- topology (node-link JSON alongside the event partitions) ---------
+    def _topology_path(self, case_id: str) -> Path:
+        return self.root / f"case_id={case_id}" / "topology.json"
+
+    def write_topology(self, case_id: str, graph: nx.DiGraph) -> Path:
+        p = self._topology_path(case_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            data = nx.node_link_data(graph, edges="links")
+        except TypeError:  # older networkx
+            data = nx.node_link_data(graph)
+        p.write_text(json.dumps(data, default=str), encoding="utf-8")
+        return p
+
+    def load_topology(self, case_id: str) -> nx.DiGraph | None:
+        p = self._topology_path(case_id)
+        if not p.exists():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        try:
+            return nx.node_link_graph(data, edges="links")
+        except TypeError:  # older networkx
+            return nx.node_link_graph(data)
+
+    # -- targeted rewrite (e.g. fill template_id back onto log events) -----
+    def replace_source(self, case_id: str, source: str, df: pl.DataFrame) -> int:
+        """Overwrite the parquet for one (case_id, source) partition."""
+        out_dir = self.root / f"case_id={case_id}" / f"source={source}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        df.select(_COLUMNS).write_parquet(out_dir / "events.parquet")
+        return df.height
 
     def count(self, case_id: str | None = None) -> int:
         if not self._has_data():

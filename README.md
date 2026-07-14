@@ -68,6 +68,36 @@ py -m backend.overlay.scenarios --build-all --seed 42 --out data/parquet
 py -m backend.overlay.config_overlay data/re2_ss/catalogue_cpu --seed 42 --out data/parquet
 ```
 
+## STEP 4 — detection layer (4 modalities)
+
+Deterministic detectors → schema-valid `AnomalyEvent`s that cluster after the
+fault. Runtime pipeline code: reads NO ground truth (baselines come from the
+first 30% of the case window).
+
+- **`backend/detect/metrics.py`** — MAD z-score vs the first-30% baseline over a
+  rolling-median-detrended residual (so monotonic drift like memory growth
+  isn't flagged); anomalies are sustained runs merged into windows. Secondary
+  IsolationForest (contamination 0.05) over per-component residual vectors per
+  30s window.
+- **`backend/detect/logs.py`** — Drain3 (depth 4, sim 0.4, masked + persisted
+  per case) fills `template_id` back onto events; Poisson-tail frequency spikes
+  and never-seen-in-baseline rare templates.
+- **`backend/detect/alerts.py`** — dedup identical firings within 60s; flap
+  suppression (≥3 fire/resolve cycles in 5min → one "flapping" anomaly).
+- **`backend/detect/config.py`** — rule-based risky-change classifier
+  (acl/route/limit/timeout/replica…) → `config_risky_flag` **candidate** triggers.
+- **`backend/detect/runner.py`** — `detect(case_id)` runs all four, writes
+  `data/anomalies/{case_id}.{parquet,json}`.
+
+Score contract note: raw magnitudes (`z/3`, `obs/exp`, capped 10) are normalized
+to the `AnomalyEvent` `[0,1]` score by ÷10. The golden sanity harness requires
+≥80% of anomaly **score×extent** mass (the after-inject overlap of each windowed
+anomaly) to fall after `inject_time`, read from the label sidecar in the test only.
+
+```bash
+py -m backend.detect.runner --case catalogue_cpu-1
+```
+
 ### Non-negotiable rules
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
 2. `component_id` is produced ONLY by `normalize_component()`.

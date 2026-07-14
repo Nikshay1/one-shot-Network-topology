@@ -2,6 +2,8 @@
 data/re2_ss/
 data/parquet/
 data/labels/
+data/anomalies/
+data/drain3/
 .env
 __pycache__/
 *.py[cod]

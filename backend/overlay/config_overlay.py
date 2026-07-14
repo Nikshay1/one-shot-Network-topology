@@ -292,7 +292,9 @@ def _main(argv: list[str]) -> int:
     n_cfg = sum(1 for e in bundle.events if e.source == "config")
     n_alert = sum(1 for e in bundle.events if e.source == "alert")
     print(f"case_id={bundle.case_id} added={added} configs={n_cfg} alerts={n_alert}")
-    EventStore(args.out).write_case(bundle)
+    store = EventStore(args.out)
+    store.write_case(bundle)
+    store.write_topology(bundle.case_id, bundle.topology)
     return 0
 
 
