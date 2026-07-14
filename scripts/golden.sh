@@ -393,5 +393,114 @@ print(f"STEP 9 OK: narration({v.narration.mode}) {len(v.narration.citations)} ci
       + (f" -> {rec.remedy}" if rec else "") + ", PDF written")
 PYEOF
 
+# --- STEP 10: replayer + API/SSE + eval ---
+echo "== VERDICT golden: STEP 10 replayer + API + eval =="
+"$PY" - <<'PYEOF'
+import asyncio, json, tempfile
+from pathlib import Path
+from fastapi.testclient import TestClient
+
+from backend.api.app import Paths, create_app
+from backend.ingest.store import EventStore
+from backend.models import RankedHypothesis
+from backend.overlay.scenarios import gen_clean_cascade
+from backend.replayer.replay import Replayer
+
+GROUND_TRUTH = ("fault_service", "inject_time", "ground_truth_innocent")
+tmp = Path(tempfile.mkdtemp())
+bundle, label = gen_clean_cascade("g10", 42, fault_service="catalogue", fault_type="cpu")
+store = EventStore(tmp / "p"); store.write_case(bundle); store.write_topology("g10", bundle.topology)
+
+# replay: ordered by (ts, event_id), and deterministic
+rows = Replayer(store, "g10").rows()
+keys = [(r["ts"], r["event_id"]) for r in rows]
+assert keys == sorted(keys), "replay not ordered by (ts, event_id)"
+a, b = [], []
+asyncio.run(Replayer(store, "g10", speed=0).stream(lambda n, d: a.append(d["event_id"])))
+asyncio.run(Replayer(store, "g10", speed=0).stream(lambda n, d: b.append(d["event_id"])))
+assert a == b and a, "replay not deterministic"
+
+paths = Paths(store=tmp / "p", anomalies=tmp / "a", ledger=tmp / "l",
+              transcripts=tmp / "t", reports=tmp / "r", eval=tmp / "e")
+with TestClient(create_app(paths, max_stream_events=5)) as c:   # cap=5 exercises the flush
+    body = c.post("/case/g10/run", json={"speed": 0, "seed": 42, "twin_enabled": True}).json()
+    rid = body["run_id"]
+    assert c.post("/case/g10/run", json={"speed": 0}).status_code == 409, "duplicate run allowed"
+
+    frames, seen_ev, cites, name = [], set(), 0, None
+    with c.stream("GET", body["stream"]) as resp:
+        for line in resp.iter_lines():
+            if line.startswith("event: "):
+                name = line[7:].strip()
+            elif line.startswith("data: "):
+                d = json.loads(line[6:]); frames.append((name, d))
+                leak = [f for f in GROUND_TRUTH if f in json.dumps(d, default=str)]
+                assert not leak, f"SSE {name} leaked {leak}"
+                if name == "event_ingested":
+                    seen_ev.add(d["event_id"])
+                elif name == "anomaly_detected":
+                    for e in d["evidence_event_ids"]:
+                        assert e in seen_ev, f"{d['anomaly_id']} cites unstreamed {e}"
+                        cites += 1
+                if name in ("pipeline_done", "pipeline_error"):
+                    break
+    names = [n for n, _ in frames]
+    assert names[-1] == "pipeline_done", f"stream ended on {names[-1]}"
+    assert cites > 5, "the stream cap was never exercised"
+    for n, d in frames:
+        if n == "hypothesis_ranked":
+            RankedHypothesis.model_validate(d)          # full-object upsert
+    tiers = {d["hypothesis_id"]: d["tier"] for n, d in frames if n == "hypothesis_ranked"}
+    for n, d in frames:
+        if n == "tier_changed":
+            assert tiers.get(d["hypothesis_id"]) == d["tier"], "tier_changed outside ranking"
+
+    # every endpoint, and none of them leak
+    eps = ["/cases", "/health", "/benchmark", "/case/g10/topology", f"/run/{rid}/verdict",
+           f"/run/{rid}/anomalies", f"/run/{rid}/ledger", f"/run/{rid}/narration",
+           f"/run/{rid}/remediation", f"/run/{rid}/agent/investigator/transcript"]
+    for ep in eps:
+        r = c.get(ep)
+        assert r.status_code == 200, f"{ep} -> {r.status_code}"
+        leaks = [f for f in GROUND_TRUTH if f in r.text]
+        assert not leaks, f"{ep} leaked {leaks}"
+    assert c.get(f"/run/{rid}/report.pdf").content[:4] == b"%PDF"
+    assert c.post(f"/run/{rid}/counterfactual",
+                  json={"remove_component": "nope"}).status_code == 422
+    v = c.get(f"/run/{rid}/verdict").json()
+    assert v["done"] and v["hypotheses"]
+
+print(f"STEP 10 OK: replay ordered+deterministic, {len(frames)} SSE frames, "
+      f"{cites} citations verified under a 5-event cap, pipeline_done last, "
+      f"409 on duplicate, {len(eps)} endpoints leak-free, PDF written")
+PYEOF
+
+"$PY" - <<'PYEOF'
+import json
+from pathlib import Path
+from eval.labels import re2ss_cases
+from eval.split import make_split
+from eval.report import build_md
+
+labels = re2ss_cases()
+s1, s2 = make_split(labels), make_split(labels)
+assert s1 == s2, "split is not deterministic"
+assert not (set(s1["dev"]) & set(s1["heldout"])), "dev/heldout overlap"
+assert len(s1["dev"]) + len(s1["heldout"]) == len(labels), "split loses cases"
+
+res = Path("eval/results.json")
+if res.exists():
+    doc = json.loads(res.read_text(encoding="utf-8"))
+    md = build_md(doc)
+    assert "Agent efficiency" in md and "AC@1" in md, "report is missing its headline"
+    for key, m in doc.get("metrics", {}).items():
+        assert "efficiency" in m and "llm_cost" in m, key
+    print(f"STEP 10 OK (eval): split {len(s1['dev'])}/{len(s1['heldout'])} deterministic, "
+          f"{len(doc.get('metrics', {}))} benchmark blocks, report renders")
+else:
+    print(f"STEP 10 OK (eval): split {len(s1['dev'])}/{len(s1['heldout'])} deterministic "
+          f"(no results.json yet -- run `make bench`)")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

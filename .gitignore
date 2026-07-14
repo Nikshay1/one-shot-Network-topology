@@ -5,6 +5,12 @@ data/labels/
 data/anomalies/
 data/drain3/
 data/ledger/
+data/ledger_*/
+data/transcripts/
+data/cache/
+data/demo/
+data/reports/
+data/harden_timings.json
 .env
 __pycache__/
 *.py[cod]

@@ -184,3 +184,53 @@ def test_offline_replays_cached_transcript_with_zero_api_calls(ctx, monkeypatch)
     assert replay.status == STATUS_COMPLETED
     assert replay.tools_used == live.tools_used                # identical investigation
     assert [e for e, _ in seen].count("agent_step") == len(live.tools_used)  # same SSE
+
+
+# =========================================================================
+# A FAILED transcript is a record, not a script (found by scripts/harden.sh)
+# =========================================================================
+def test_a_failed_transcript_is_never_replayed(monkeypatch) -> None:
+    """OFFLINE replay of an errored run used to fabricate a `completed` agent.
+
+    The cached file holds `status=error` and zero steps. ReplayLLM ran out of
+    decisions on call 1, returned a final, and the agent 'completed' having done
+    nothing — so rule 11's autopilot never fired and the twin never ran.
+    """
+    from backend.agents.harness import STATUS_COMPLETED, replayable, resolve_llm
+
+    monkeypatch.setenv("OFFLINE", "1")
+    assert replayable("error", [], None) is False
+    assert replayable(None, [], None) is False
+    assert replayable(STATUS_COMPLETED, [], None) is False       # completed but nothing to replay
+    assert replayable(STATUS_COMPLETED, [{"tool": "get_anomalies"}], None) is True
+
+    # the SELF-PROPAGATING form: the hollow run was written back as completed with
+    # the ReplayLLM's placeholder final, so the poison re-armed on every replay.
+    assert replayable(STATUS_COMPLETED, [], "replayed") is False
+
+    # the exact shape harden.sh hit: an errored transcript must NOT drive a replay
+    llm, replayed = resolve_llm("investigator", "gpt-4o", None, [], None, "error")
+    assert llm is None and replayed is False
+
+    llm, replayed = resolve_llm("investigator", "gpt-4o", None,
+                                [{"tool": "get_anomalies", "args": {}}], "done", STATUS_COMPLETED)
+    assert llm is not None and replayed is True
+
+
+def test_a_replayed_run_does_not_rewrite_its_own_transcript(ctx, monkeypatch) -> None:
+    """Replay is a read path. Rewriting the recording is what let a hollow run
+    persist itself as `completed` and poison every later replay."""
+    ctx, tmp_path = ctx
+    key = tr.cache_key("r1", tr.ledger_digest(ctx.ledger), "v1")
+    path = tr.path_for(tmp_path / "t", "investigator", key)
+    tr.write(path, "investigator",
+             [tr.TranscriptStep(ts=0.0, tool="get_anomalies", args={}, result_summary="[]")],
+             "completed", "done")
+    before = path.read_text(encoding="utf-8")
+
+    monkeypatch.setenv("OFFLINE", "1")
+    res = run_agent(agent="investigator", model="gpt-4o", system_prompt="s", task="t",
+                    tools=["get_anomalies"], ctx=ctx, budget=Budget(max_calls=5),
+                    run_id="r1", prompt_version="v1", transcripts_dir=tmp_path / "t")
+    assert res.replayed is True and res.status == "completed"
+    assert path.read_text(encoding="utf-8") == before, "replay rewrote the recording"

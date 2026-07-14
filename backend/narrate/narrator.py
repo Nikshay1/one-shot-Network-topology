@@ -171,10 +171,12 @@ def narrate(
     from backend.agents.harness import resolve_llm
     from backend.agents import transcript as tr
 
-    probe, _ = resolve_llm("narrator", narrate_llm.MODEL, llm, *tr.read(
+    cached_steps, cached_status, cached_final = tr.read(
         tr.path_for(transcripts_dir, "narrator",
                     tr.cache_key(run_id, tr.ledger_digest(ctx.ledger),
-                                 f"{narrate_llm.PROMPT_VERSION}-a1")))[:2])
+                                 f"{narrate_llm.PROMPT_VERSION}-a1")))
+    probe, _ = resolve_llm("narrator", narrate_llm.MODEL, llm, cached_steps, cached_final,
+                           cached_status)
     if probe is None:                            # no model available -> deterministic report
         text = build_deterministic(ctx.case_id, hypotheses, remediation, ctx.ledger)
         clean, cites, stripped, valid = validate_citations(text, ctx.ledger)

@@ -16,7 +16,11 @@ ledger.
                                     detection ── metrics · logs · alerts · config
                                         │        → schema-valid AnomalyEvents
                                         ▼
-                                    [ rank · tiers · ledger · API ]   ← upcoming
+              rank floor · counterfactual · SimPy twin · tiers · ledger
+                                        │
+        INVESTIGATOR → CHALLENGER → FIX-REHEARSAL → NARRATOR   (bounded agents)
+                                        │
+                          FastAPI + SSE ─┴─ eval / benchmark
 ```
 
 Every stage is deterministic and runnable/testable from the CLI without the API
@@ -35,10 +39,10 @@ server, and every data shape is a frozen contract.
 | 7 | SimPy twin + verification + remediation primitives | ✅ |
 | 8 | Agent harness + Investigator + agentic Challenger | ✅ |
 | 9 | Narrator + Fix-Rehearsal agent + PDF report | ✅ |
-| 10+ | API/UI, eval/benchmark | ⏳ |
+| 10 | Replayer + API/SSE + eval/benchmark + hardening | ✅ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **216 tests** plus end-to-end data checks for stages 2–9 (~4 min).
+runs **245 tests** plus end-to-end data checks for stages 2–10 (~5 min).
 
 > ### ⚠️ The LLM path has NOT been run against a real `OPENAI_API_KEY` yet
 > The agent layer (stage 8) has only ever been exercised with the **scripted** and
@@ -49,12 +53,43 @@ runs **216 tests** plus end-to-end data checks for stages 2–9 (~4 min).
 > Unverified: `harness.OpenAIClient` tool-call parsing at temperature 0, and how a
 > real model actually spends its 3 cost points.
 
+## Bring-up
+
+```bash
+make setup                 # uv venv + editable install
+make golden                # the gate: 245 tests + stage 2-10 end-to-end checks (~5 min)
+
+make run                   # serve the API on 127.0.0.1:8000  (contracts/api_contract.md v1.1)
+make demo-list             # the 7 demo scenarios, one per scenario type
+make demo-1                # reset run state, assert warm caches, fire scenario 1
+OFFLINE=1 make demo-3      # ...with no network at all
+
+make warm-cache            # pre-render every demo scenario (do this BEFORE demoing)
+make harden                # cold-start x3 + kill-network proof + timings
+make bench                 # split -> both modes -> ablations -> eval/results.md
+```
+
+A run in 4 lines:
+
+```bash
+curl -s -X POST localhost:8000/case/clean_cascade-01/run      -H 'content-type: application/json' -d '{"speed":0,"seed":42,"twin_enabled":true}'
+# -> {"run_id":"clean_cascade-01","stream":"/stream/clean_cascade-01"}
+curl -N localhost:8000/stream/clean_cascade-01      # SSE: ingest -> anomalies -> ranking -> agents
+curl -s localhost:8000/run/clean_cascade-01/remediation | python -m json.tool
+```
+
+`run_id == case_id` on purpose: the agent transcript cache is keyed on `run_id`, so
+an OFFLINE demo can only replay a warmed transcript if the API run uses the same id
+the warm-up did. It also gives `409 on duplicate run` its natural meaning — a run
+for this case is already in flight.
+
 ## Bugs worth remembering (found and fixed)
 
-Two real bugs in the stage-8 agent layer. Both are **fixed**, but they're recorded
-because of *how* they were found: the full test suite was green and both were
-invisible to it — only running the CLI end-to-end surfaced them. Both had the same
-root cause: **the run's ledger was not fresh**.
+Six real bugs, all **fixed**. They're recorded because of *how* they were found:
+in every case the full test suite was green and the bug was invisible to it. Each
+one surfaced by **running the thing** — a CLI, a demo, a hardening script — not by
+testing it. Bugs 1–2 shared a root cause (the run's ledger was not fresh); 5–6 were
+found by stage 10's API and `scripts/harden.sh`.
 
 ### 1. The rule-11 autopilot fallback never fired
 `investigate_and_rescore` decided "did the agent contribute?" by asking whether the
@@ -114,6 +149,55 @@ callers, so it saturated and looked fine in tests.)
 **2.7×** latency and a visible cascade. The remediation agent went from "uncertain"
 on everything to a real recommendation.
 
+### 5. The SSE stream cap silently broke an ordering guarantee
+
+The contract's first ordering guarantee is *`event_ingested` precedes any
+`anomaly_detected` that cites it*. The stream is capped at 2000 events — a real
+RE2-SS case carries ~186k, and pushing all of them drowns the `agent_step` events
+the operator is actually watching. But that case's anomalies **cite 8,421 evidence
+ids spread across all 186k events**, so the cap dropped events that anomalies then
+cited: the UI showed an anomaly pointing at evidence it had never been sent.
+
+The first version of the test passed — for the wrong reason. It ran on a synthetic
+case of **725 events**, which fits under the 2000 cap, so nothing was ever dropped
+and the assertion was vacuous. The fix flushes cited stragglers ahead of every
+`anomaly_detected`, and the test now runs its own app at `max_stream_events=5`:
+sabotage the flush and it fails with `cap dropped metric-carts-000033, cited by
+anom-carts-0000`.
+
+> **Lesson:** a cap is a lie unless something exercises it. A test whose fixture is
+> smaller than the limit it's testing proves nothing.
+
+### 6. A failed agent transcript replayed itself into a hollow success
+
+Found by `scripts/harden.sh` — the kill-network path reported
+`remediation=skipped` where the same case run directly said `remediation=ok`.
+
+With no API key the investigator errors, and rule 13 writes a transcript of that
+run: `status=error`, zero steps. Under `OFFLINE=1` the harness replayed *any*
+cached transcript, so it fed that empty file to `ReplayLLM` — which ran out of
+decisions on call 1 and returned a final. The agent therefore **"completed" having
+done nothing**: rule 11's autopilot never fired, so the twin never ran, so the
+top-1 never got a twin verdict, so the fix-rehearsal gate refused to open. The
+demo lost its twin *and* its recommended fix, silently, with everything green.
+
+Then it got worse. That hollow run was **written back** as `status=completed` with
+`ReplayLLM`'s placeholder `final="replayed"` — so the poison re-armed itself: from
+then on the cache entry *looked* like a legitimate completed run forever.
+
+Two fixes, because there were two mistakes:
+- a cache entry is honoured only if it recorded a **completed run with steps** — a
+  transcript with nothing in it has nothing to replay, whatever its status line says
+  (this also renders the already-poisoned files on disk inert);
+- **replay is a read path** and no longer rewrites the recording it replayed from.
+
+`harden.sh` now asserts the offline remediation panel is not `skipped`, which is
+what caught it in the first place.
+
+> **Lesson:** a cache that can write to itself can lie to itself. And "the agent
+> completed" is not the same as "the agent did anything" — rule 11 keys off status,
+> so a hollow success is worse than an honest failure.
+
 ## Repository layout
 
 ```
@@ -129,20 +213,25 @@ backend/
   agents/               tools (typed registry) · budget · harness · transcript ·
                         investigator · challenger · remediation
   narrate/              narrator (citation-bound) · llm · cache
-  api/                  pdf_report (the audit trail)
+  replayer/             replay (ordered, speed-compressed, deterministic)
+  api/                  app (every v1.1 endpoint) · sse (the ordered run bus) ·
+                        pdf_report (the audit trail)
+  main.py               uvicorn entry point  (make run)
   pipeline.py           detect→localize→score→INVESTIGATOR→rescore→CHALLENGER→
                         REMEDIATION→NARRATOR→verdict
   models.py             pydantic v2 models mirroring every schema
+eval/                   labels (the ONLY ground-truth reader) · split · run_benchmark ·
+                        baselines · report  → results.json/md/png + tuning_log.json
 prompts/                investigator.j2 · challenger.j2 · remediation.j2 · narrator.j2
 fixtures/               hand-written schema-valid sample data
 scenarios/registry.json 25 scenario variants
-scripts/                golden.sh · fetch_golden_case.sh
+scripts/                golden.sh · harden.sh · demo.sh · fetch_golden_case.sh
 docs/re2_ss.md          RE2-SS dataset reference
 data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/
-                        ledger/ transcripts/
+                        ledger/ transcripts/ cache/ demo/ reports/
 tests/                  contracts · normalize · adapter · overlay · detect · rank ·
                         tools · counterfactual · scenario2 · twin · harness ·
-                        investigator · challenger
+                        investigator · challenger · narrate · remediation · api
 ```
 
 ## Setup
@@ -406,6 +495,116 @@ py -m backend.api.pdf_report --case clean_cascade-01              # the PDF post
 py -m backend.narrate.cache --warm-cache --all-demo-scenarios     # warm the OFFLINE demo
 ```
 
+### 10 — Replayer, API/SSE & the benchmark (`backend/replayer`, `backend/api`, `eval/`)
+
+**Replayer** (`replay.py`) streams a stored case back ordered by `(ts, event_id)` —
+`ts` alone is not a total order, and the tie-break makes two replays byte-identical.
+`speed` compresses the original inter-arrival gaps; `speed=0` is instant batch (the
+eval path, so a benchmark isn't gated on wall-clock).
+
+**Detection is batch, by design.** The UI gets `event_ingested` *during* the replay,
+but detection only runs once the stream ends: the detectors are batch estimators —
+MAD needs the whole baseline, IsolationForest fits over all windows, Drain3 needs the
+full log corpus — so a partial stream would rank differently from the offline
+pipeline. The stream visualizes ingest; the verdict is computed on the complete case.
+A consequence worth knowing before a demo: at `speed=0` the ingest events all flush
+first, so `agent_step` events appear **after** them, not interleaved. Use `speed=10`
+if you want them paced.
+
+**API** (`app.py`, `sse.py`) implements every v1.1 endpoint. `POST /case/{id}/run`
+returns `202` immediately; a background task runs replay → detect → pipeline,
+publishing onto the run's bus. The pipeline is synchronous and runs in a worker
+thread, so `publish` is thread-safe via `call_soon_threadsafe`.
+
+Ordering is **structural, not best-effort**: every event goes through one bus in
+publish order and each subscriber replays that same log from index 0 — so a UI that
+connects late sees the identical sequence, `pipeline_done` is always last, and
+`tier_changed` can only come from the ranking stage because that is the only place
+that emits it. Heartbeat every 15s. `409` on a duplicate in-flight run.
+
+**Ground truth never leaves `/eval`.** No handler opens `data/labels`.
+`tests/test_api.py` greps every response body and every SSE frame for
+`fault_service` / `inject_time` / `ground_truth_innocent` — and separately asserts
+the label really does hold those secrets, so the grep can't pass by guarding nothing.
+
+**Eval** (`eval/`) — `split.py` writes a deterministic 20/80 dev/held-out split over
+the RE2-SS cases, stratified by fault service and ordered by `sha256(seed|case_id)`
+rather than a shuffle, so it depends only on the case set and the seed. Weights and
+thresholds are tuned on **dev only**; every choice — including "changed nothing, and
+here's why" — is appended to `eval/tuning_log.json`. `run_benchmark.py` produces the
+numbers, `baselines.py` optionally runs N-Sigma/BARO via RCAEval (and skips with a
+logged reason if the package isn't there), `report.py` renders `eval/results.md` +
+a PNG from the same `results.json` that feeds `GET /benchmark` — one source of numbers.
+
+**Hardening** (`scripts/harden.sh`) — every demo scenario cold-starts 3× and must
+agree on top-1 (they do; slowest median **13.0s**), every demo cache must be warm, and
+the kill-network path (no key, `OFFLINE=1`) must complete the whole demo: SSE to
+`pipeline_done`, a verdict, the agent transcript, the remediation panel and the PDF —
+zero API calls.
+
+## Reproduce the numbers
+
+```bash
+make bench          # or, step by step:
+py -m eval.split
+py -m eval.run_benchmark --heldout --agentic
+py -m eval.run_benchmark --heldout --fixed-pipeline --with-ablations
+py -m eval.run_benchmark --synthetic --fixed-pipeline
+py -m eval.baselines            # optional; skips cleanly without RCAEval
+cat eval/results.md
+```
+
+Full output: **[`eval/results.md`](eval/results.md)**. The honest state of it:
+
+### Synthetic suite (23 scored / 25)
+
+| mode | precision@1 | precision@3 | red-herring false-blame | median time-to-RCA |
+| ---- | ----------- | ----------- | ----------------------- | ------------------ |
+| fixed | 0.522 | 0.739 | **0.000** | 13.9s |
+| agentic | 0.522 | 0.739 | **0.000** | 7.9s |
+
+The **0.000 false-blame rate** is the result this project was built for: across every
+red-herring variant, an innocent config change is never ranked #1. Two `ambiguous`
+variants are excluded and reported as `excluded_unscoreable` — that scenario type has
+no single right answer by construction, so scoring it hit-or-miss would be scoring a
+coin flip.
+
+### Held-out RE2-SS (n=1) — and what the ablation exposed
+
+| mode | AC@1 | AC@3 | Avg@5 | mean expensive ops |
+| ---- | ---- | ---- | ----- | ------------------ |
+| fixed | 0.000 | 0.000 | 0.400 | 6.0 |
+| **fixed, no counterfactual** | **1.000** | **1.000** | **1.000** | **1.0** |
+| fixed, no topology | 0.000 | 1.000 | 0.600 | 6.0 |
+| fixed, no twin | 0.000 | 0.000 | 0.400 | 5.0 |
+
+**The counterfactual is actively harmful on the one real case, and the ablation
+measures it.** With it, `catalogue` (the true fault) lands at rank 4 behind
+`session-db`; remove it and `catalogue` is rank 1 — for **one** expensive op instead
+of six. This is the drift-heavy-case gap noted since stage 7, now quantified rather
+than described: on real telemetry with broad background drift, "removing X still
+explains the anomalies" fires for the true root cause too, and demotes it.
+
+n=1, so this is a **pointer, not a p-value** — but it points hard, and it's the first
+thing to chase with more of the dataset extracted.
+
+### Agent efficiency — the headline that isn't real yet
+
+The claim this project makes is *equal-or-better AC@k for fewer expensive ops*: the
+fixed pipeline always spends 5 counterfactuals + 1 twin whatever the case looks like,
+while the agent picks its targets. The table renders, and the plumbing measures real
+`tool_calls` / `cost_points` / `expensive_ops` per case — but **with no
+`OPENAI_API_KEY` every "agentic" row is the autopilot wearing an agentic label**:
+the agents resolve to no-LLM, rule 11 fires, and `mean_tool_calls` is `0.0` on both
+sides. `results.md` says so in the LLM-cost block rather than letting the identical
+rows imply a finding. The comparison is one `OPENAI_API_KEY` away from being real.
+
+### External baselines
+
+Skipped, with the reason logged: `RCAEval not importable (No module named 'RCAEval')`.
+It's an optional heavy dependency; `baselines.py` records the skip in `results.json`
+and `results.md` rather than crashing or silently omitting the row.
+
 ## Non-negotiable rules
 
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
@@ -450,6 +649,18 @@ in-process end-to-end checks:
   injection is never stated **and** cannot be laundered into the ledger; the
   fix-rehearsal gate holds, the recommendation is arithmetic, and it says "uncertain"
   rather than guess; the PDF audit trail is written.
+- **stage 10** — replay is ordered by `(ts, event_id)` and deterministic; a run over
+  the API streams to `pipeline_done` **under a 5-event cap** with every cited evidence
+  event still preceding its anomaly (63 citations checked); `hypothesis_ranked` is a
+  full-object upsert and `tier_changed` never announces a tier the ranking stage
+  didn't produce; a duplicate run is `409`; all 10 endpoints answer and **none of them
+  leak ground truth**; the split is deterministic and loses no cases; the report
+  renders from real results.
+
+Beyond the gate, `make harden` proves the demo path: 7 scenarios × 3 cold starts all
+agree on top-1, and the kill-network run (no key, `OFFLINE=1`) still reaches
+`pipeline_done` with a verdict, a transcript, `remediation=ok → scale_replicas` and a
+PDF — zero API calls.
 
 ## Dataset
 
@@ -457,3 +668,11 @@ Primary dataset is **RE2-SS** (RCAEval Sock-Shop fault-injection benchmark): 30
 cases = 5 services × 6 fault types, 3 runs each. Extract to the git-ignored
 `data/re2_ss/`. Full layout + adapter mapping in `docs/re2_ss.md` and
 `data/README.md`.
+
+**Only one real case (`catalogue_cpu-1`) is materialized locally.** That is why the
+held-out split is `n=1` and its dev side is empty — 20% of one case rounds to zero, so
+nothing has been tuned and `eval/tuning_log.json` records exactly that rather than
+quietly leaving the constants unexplained. The split code is already stratified and
+seeded for the full extract: drop the rest of RE2-SS into `data/re2_ss/` and re-run
+`py -m eval.split` to get a real dev set and held-out numbers with an `n` worth
+quoting. The 25 synthetic scenario variants carry the statistical weight today.

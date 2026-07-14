@@ -138,15 +138,34 @@ def tool_specs(names: list[str]) -> list[dict]:
     return specs
 
 
+def replayable(cached_status: str | None, cached_steps: list[dict] | None,
+               cached_final: str | None) -> bool:
+    """Only a COMPLETED transcript WITH STEPS may be replayed.
+
+    A failed run still writes a transcript (rule 13), but that file is a record, not
+    a script. Replaying one used to turn an error into a hollow `completed`: the
+    ReplayLLM ran out of decisions on call 1, the agent finished having done nothing,
+    rule 11's autopilot never fired, and the twin (and with it the remediation) fell
+    silently out of the verdict.
+
+    Worse, the hollow run was then written back as `status=completed`, so the
+    corruption survived on disk and re-armed itself on the next replay. Requiring
+    STEPS — not just a status — is what makes that artifact inert: a transcript with
+    nothing in it has nothing to replay, whatever its status line claims.
+    """
+    return cached_status == STATUS_COMPLETED and bool(cached_steps)
+
+
 def resolve_llm(agent: str, model: str, llm: LLM | None,
-                cached_steps: list[dict] | None, cached_final: str | None):
-    """explicit LLM > OFFLINE replay > real OpenAI > None."""
+                cached_steps: list[dict] | None, cached_final: str | None,
+                cached_status: str | None = None):
+    """explicit LLM > OFFLINE replay of a SUCCESSFUL transcript > real OpenAI > None."""
     if llm is not None:
         return llm, False
     if tr.offline():
-        if cached_steps is not None:
+        if replayable(cached_status, cached_steps, cached_final):
             return ReplayLLM(cached_steps, cached_final), True
-        return None, False                      # offline with no cache: no API allowed
+        return None, False                      # offline with no usable cache: no API allowed
     if not os.getenv("OPENAI_API_KEY"):
         return None, False
     try:
@@ -177,9 +196,10 @@ def run_agent(
     # cache key is bound to the ledger state AT AGENT START
     key = tr.cache_key(run_id, tr.ledger_digest(ctx.ledger), prompt_version)
     path = tr.path_for(transcripts_dir, agent, key)
-    cached_steps, _cached_status, cached_final = tr.read(path)
+    cached_steps, cached_status, cached_final = tr.read(path)
 
-    resolved, replayed = resolve_llm(agent, model, llm, cached_steps, cached_final)
+    resolved, replayed = resolve_llm(agent, model, llm, cached_steps, cached_final,
+                                     cached_status)
     steps: list[tr.TranscriptStep] = []
 
     if resolved is None:                        # nothing to drive the loop
@@ -242,7 +262,10 @@ def run_agent(
 
     result = AgentResult(agent, status, final_text=final_text, steps=steps,
                          error=error, replayed=replayed)
-    result.transcript_path = str(tr.write(path, agent, steps, status, final_text))
+    # Replay is a READ path. Rewriting the file it just replayed is how the hollow
+    # `completed` above got minted and persisted; the recording stays immutable.
+    result.transcript_path = str(path if replayed
+                                 else tr.write(path, agent, steps, status, final_text))
     if emit:
         emit("agent_done", {"agent": agent, "status": status,
                             "summary": final_text or error or f"{len(steps)} steps"})
