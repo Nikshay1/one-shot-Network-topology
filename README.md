@@ -33,10 +33,20 @@ server, and every data shape is a frozen contract.
 | 5 | Localize + deterministic rank floor + ledger + agent tool registry | ✅ |
 | 6 | Counterfactual mechanism + single tier writer + deterministic autopilot | ✅ |
 | 7 | SimPy twin + verification + remediation primitives | ✅ |
-| 8+ | Agents, narrator, API/UI | ⏳ |
+| 8 | Agent harness + Investigator + agentic Challenger | ✅ |
+| 9+ | Narrator, report, API/UI, eval | ⏳ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **154 tests** plus end-to-end data checks for stages 2–7.
+runs **193 tests** plus end-to-end data checks for stages 2–8 (~3.5 min).
+
+> ### ⚠️ The LLM path has NOT been run against a real `OPENAI_API_KEY` yet
+> The agent layer (stage 8) has only ever been exercised with the **scripted** and
+> **offline-replay** backends — no real OpenAI call has been made at any point. The
+> key goes in once the project is built. With no key the pipeline reports
+> `investigator=error` and falls back to the deterministic **autopilot** (rule 11),
+> so a valid verdict is still produced today — just without agentic reasoning.
+> Unverified: `harness.OpenAIClient` tool-call parsing at temperature 0, and how a
+> real model actually spends its 3 cost points.
 
 ## Repository layout
 
@@ -50,14 +60,20 @@ backend/
   rank/                 candidates · scorer · tiers · counterfactual · autopilot · constants
   ledger/               ledger (append-only JSONL evidence)
   twin/                 model · faults · remedies · compare · runner (SimPy)
-  agents/               tools (typed registry) · budget
+  agents/               tools (typed registry) · budget · harness · transcript ·
+                        investigator · challenger
+  pipeline.py           detect→localize→score→INVESTIGATOR→rescore→CHALLENGER→verdict
   models.py             pydantic v2 models mirroring every schema
+prompts/                investigator.j2 · challenger.j2   (the prompt contracts)
 fixtures/               hand-written schema-valid sample data
 scenarios/registry.json 25 scenario variants
 scripts/                golden.sh · fetch_golden_case.sh
 docs/re2_ss.md          RE2-SS dataset reference
-data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/ ledger/
-tests/                  contracts · normalize · adapter · overlay · detect · rank · tools
+data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/
+                        ledger/ transcripts/
+tests/                  contracts · normalize · adapter · overlay · detect · rank ·
+                        tools · counterfactual · scenario2 · twin · harness ·
+                        investigator · challenger
 ```
 
 ## Setup
@@ -243,6 +259,43 @@ py -m backend.rank.autopilot --case catalogue_cpu-1 --top 5
 py -m backend.twin.runner --case catalogue_cpu-1 --component catalogue --fault cpu
 ```
 
+### 8 — Agent harness, Investigator & Challenger (`backend/agents`, `backend/pipeline.py`)
+
+The agentic core. **The agents decide what gets investigated; the scorer decides
+the verdict.**
+
+- **harness.py** — a generic bounded ReAct loop over OpenAI function-calling
+  (temperature 0, tenacity retries), no agent frameworks. Exposes only the agent's
+  tool subset; every call goes through the Budget; every step is written to the
+  transcript and emitted as an `agent_step` SSE event. Terminates on final message,
+  BudgetExceeded (calls/points/wall-clock), or error — **all paths return a
+  well-formed `AgentResult{status: completed|budget_exhausted|error, …}`**. No agent
+  can call another agent.
+- **investigator.py** (`gpt-4o`) — nine tools, `Budget(10 calls, 3 points, 60s)`.
+  The prompt contract (`prompts/investigator.j2`): the deterministic ranking is your
+  starting point, not your conclusion; spend the expensive checks where they
+  *discriminate*; `file_finding` every conclusion **with event ids**; if the evidence
+  is ambiguous, say so; **you do not decide the verdict, you decide what gets
+  investigated**. After the loop — regardless of status — the scorer rescores over
+  the richer ledger and `tiers.py` assigns tiers. If it didn't complete *and* the
+  ledger gained no counterfactual/twin facts, the **autopilot** runs (rule 11).
+- **challenger.py** (`gpt-4o-mini`) — one pass, read-only 0-cost tools
+  (`get_ledger`, `get_events`, `check_path`), `Budget(5 calls, 30s)`, run against the
+  top hypothesis after the rescore. Emits `{claim, contradicting_event_id}`; **code**
+  validates each (resolves ∧ pertains by component/time) and silently discards the
+  rest. Upheld attacks cost **−0.1 each** and re-tier via `tiers.py`.
+- **transcript.py** — JSONL writer/reader with a deterministic cache key =
+  `hash(run_id + ledger digest at agent start + prompt version)`. `OFFLINE=1` replays
+  the cached transcript through the **same SSE events** — the demo shows the agent
+  "thinking" identically with **zero API calls**.
+
+```bash
+py -m backend.pipeline --case catalogue_cpu-1                     # agentic
+py -m backend.pipeline --case catalogue_cpu-1 --fixed-pipeline    # ablation: autopilot
+py -m backend.agents.investigator --case catalogue_cpu-1 --live   # one real run
+OFFLINE=1 py -m backend.agents.investigator --case catalogue_cpu-1  # replay, 0 API calls
+```
+
 ## Non-negotiable rules
 
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
@@ -277,6 +330,11 @@ in-process end-to-end checks:
 - **stage 7** — a cpu fault on `carts` cascades latency to `front-end` in the twin;
   `rehearse(restart)` clears ≥50% of simulated symptoms; the autopilot's top-1
   carries a non-null twin block.
+- **stage 8** — the scenario-2 gate holds in **both** modes (agentic and
+  `--fixed-pipeline`); every harness termination path returns a well-formed result;
+  the agent spending its twin on the rank-2 candidate promotes rank-2 to rank-1 **via
+  the scorer**; fake-citation attacks are discarded; an LLM that raises still yields a
+  verdict via autopilot.
 
 ## Dataset
 

@@ -276,5 +276,57 @@ print(f"STEP 7 OK: top1={top.suspect_component} twin={top.twin.verdict}, "
       f"rehearse(restart) cleared {rep.symptoms_cleared_pct}%")
 PYEOF
 
+# --- STEP 8: agent harness + investigator + agentic challenger ---
+echo "== VERDICT golden: STEP 8 agents =="
+"$PY" - <<'PYEOF'
+import tempfile
+from backend.overlay.scenarios import build_variant, load_registry
+from backend.ingest.store import EventStore
+from backend.detect.runner import detect
+from backend.pipeline import run as pipeline_run
+from backend.agents.harness import ScriptedLLM, LLMDecision
+
+variant = next(v for v in load_registry()["variants"] if v["scenario_type"] == "red_herring_config")
+bundle, label = build_variant(variant, 42)
+cid, tmp = bundle.case_id, tempfile.mkdtemp()
+store = EventStore(tmp + "/p"); store.write_case(bundle); store.write_topology(cid, bundle.topology)
+detect(cid, store_root=tmp + "/p", out_dir=tmp + "/a", drain_dir=tmp + "/d")
+innocent = sorted({c["component_id"] for c in label.injected_configs if c["innocent"]})
+
+def gate(v, mode):
+    top3 = [h.suspect_component for h in v.hypotheses[:3]]
+    assert label.fault_service in top3, f"{mode}: fault not in top-3 {top3}"
+    assert v.hypotheses[0].suspect_component not in innocent, f"{mode}: innocent config #1"
+    for h in v.hypotheses:
+        assert abs(sum(h.score_breakdown.model_dump().values()) - h.score) < 1e-6
+
+# 1) --fixed-pipeline ablation: both agents bypassed
+fixed = pipeline_run(cid, fixed_pipeline=True, store_root=tmp + "/p", anomalies_dir=tmp + "/a",
+                     ledger_dir=tmp + "/l1", transcripts_dir=tmp + "/t")
+assert fixed.mode == "autopilot"
+gate(fixed, "fixed")
+
+# 2) agentic: the agent decides where to spend; the scorer still decides the verdict
+decisions = [LLMDecision(tool="get_candidates", args={})]
+decisions += [LLMDecision(tool="run_counterfactual", args={"component": c}) for c in innocent[:2]]
+decisions.append(LLMDecision(final="checked the suspicious configs"))
+agentic = pipeline_run(cid, store_root=tmp + "/p", anomalies_dir=tmp + "/a",
+                       ledger_dir=tmp + "/l2", transcripts_dir=tmp + "/t",
+                       llm=ScriptedLLM(decisions))
+assert agentic.mode == "agentic", agentic.fallback_note
+gate(agentic, "agentic")
+
+# 3) rule 11: the LLM dies -> a verdict still exists, via autopilot
+class Boom:
+    def decide(self, m, s): raise RuntimeError("api down")
+fb = pipeline_run(cid, store_root=tmp + "/p", anomalies_dir=tmp + "/a",
+                  ledger_dir=tmp + "/l3", transcripts_dir=tmp + "/t", llm=Boom())
+assert fb.mode == "autopilot" and fb.hypotheses, "no verdict after LLM failure"
+assert "autopilot" in fb.fallback_note
+
+print(f"STEP 8 OK: scenario-2 green in BOTH modes; LLM failure -> autopilot "
+      f"({fb.investigator_status}); verdict always produced")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

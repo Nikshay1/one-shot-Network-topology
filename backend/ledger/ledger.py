@@ -15,12 +15,18 @@ _DEFAULT_DIR = Path("data/ledger")
 
 
 class Ledger:
-    def __init__(self, run_id: str, case_id: str, ledger_dir: str | Path = _DEFAULT_DIR) -> None:
+    def __init__(self, run_id: str, case_id: str, ledger_dir: str | Path = _DEFAULT_DIR,
+                 fresh: bool = False) -> None:
+        """One JSONL per run. `fresh=True` starts the run's ledger empty — a run's
+        evidence must not inherit a previous run's facts (it would corrupt both the
+        'did this agent contribute?' check and the transcript cache key)."""
         self.run_id = run_id
         self.case_id = case_id
         self.path = Path(ledger_dir) / f"{run_id}.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._counters: dict[str, int] = defaultdict(int)
+        if fresh and self.path.exists():
+            self.path.unlink()
         # seed counters from any existing file so ids stay unique across reopen
         if self.path.exists():
             for line in self.path.read_text(encoding="utf-8").splitlines():

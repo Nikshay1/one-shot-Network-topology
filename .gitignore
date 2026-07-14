@@ -19,3 +19,4 @@ data/*.parquet
 dist/
 build/
 .DS_Store
+data/transcripts/
