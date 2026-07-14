@@ -63,6 +63,7 @@ class RemediationReport:
     rehearsals: list[RecoveryReport] = field(default_factory=list)
     caveat: str = ""
     agent_status: str | None = None
+    transcript_path: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -166,6 +167,7 @@ def recommend(
 
     budget = budget or Budget(max_calls=6, max_cost_points=3, wall_clock_s=45.0)
     agent_status = None
+    tpath: str | None = None
     if llm is not None or __import__("os").getenv("OPENAI_API_KEY") or _offline_cached(
             run_id, transcripts_dir):
         result = run_agent(
@@ -177,6 +179,7 @@ def recommend(
             prompt_version=PROMPT_VERSION, llm=llm, transcripts_dir=transcripts_dir, emit=emit,
         )
         agent_status = result.status
+        tpath = result.transcript_path
         rehearsals = _collect_rehearsals(result)
         if emit:
             for r in rehearsals:
@@ -195,7 +198,8 @@ def recommend(
                                  hypothesis_id=target.hypothesis_id,
                                  component=target.suspect_component,
                                  fault_type=target.fault_type_guess,
-                                 caveat="no remedy could be rehearsed", agent_status=agent_status)
+                                 caveat="no remedy could be rehearsed", agent_status=agent_status,
+                                 transcript_path=tpath)
 
     # the recommendation is arithmetic: clearance first, then recovery time
     ordered = sorted(rehearsals, key=lambda r: (-r.symptoms_cleared_pct, r.sim_time_to_recover_s))
@@ -208,7 +212,7 @@ def recommend(
                                  recommended=None, alternatives=ordered, rehearsals=rehearsals,
                                  caveat=f"{UNCERTAIN_CAVEAT} (best: {best.remedy} at "
                                         f"{best.symptoms_cleared_pct:.0f}%)",
-                                 agent_status=agent_status)
+                                 agent_status=agent_status, transcript_path=tpath)
 
     caveat = ""
     if best.side_effects:
@@ -217,7 +221,7 @@ def recommend(
                              component=target.suspect_component,
                              fault_type=target.fault_type_guess, recommended=best,
                              alternatives=ordered[1:], rehearsals=rehearsals, caveat=caveat,
-                             agent_status=agent_status)
+                             agent_status=agent_status, transcript_path=tpath)
 
 
 def _offline_cached(run_id: str, transcripts_dir) -> bool:

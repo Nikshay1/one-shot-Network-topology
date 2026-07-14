@@ -53,8 +53,10 @@ def run(
     anomalies_dir: str | Path = _DEFAULT_ANOMALIES,
     ledger_dir: str | Path = _DEFAULT_LEDGER,
     run_id: str | None = None,
-    twin_fn: Callable[[str, str], dict] | None = None,
+    twin_fn: Callable[[str, str], dict | None] | None = None,
     cf_top_k: int = _CF_TOP_K,
+    counterfactual_enabled: bool = True,
+    twin_enabled: bool = True,
 ) -> Verdict:
     store = EventStore(store_root)
     topology = store.load_topology(case_id)
@@ -64,7 +66,7 @@ def run(
     run_id = run_id or case_id
     ledger = Ledger(run_id, case_id, ledger_dir)
 
-    if twin_fn is None:  # default: the SimPy twin (Step 7), for the top-1 suspect
+    if twin_fn is None and twin_enabled:  # default: the SimPy twin (Step 7), for the top-1 suspect
         from backend.twin.runner import twin as _twin
         twin_fn = lambda comp, ft: _twin(case_id, comp, ft, store_root=store_root, ledger=None)
 
@@ -75,7 +77,8 @@ def run(
 
     # counterfactual set: original top-k plus every risky-config target (so a
     # red-herring config always gets a counterfactual-unchanged fact).
-    cf_set = {h.suspect_component for h in ranked[:cf_top_k]} | _config_targets(anomalies)
+    cf_set = ({h.suspect_component for h in ranked[:cf_top_k]} | _config_targets(anomalies)
+              if counterfactual_enabled else set())
 
     dumped: list[dict] = []
     for h in ranked:
@@ -116,14 +119,15 @@ def run(
     if twin_fn is not None and dumped:
         top = dumped[0]
         tw = twin_fn(top["suspect_component"], top["fault_type_guess"])
-        top["twin"] = tw
-        top1_twin = tw.get("verdict", "pending")
-        ledger.twin_result(
-            statement=f"Twin for {top['suspect_component']}: verdict={top1_twin}, "
-                      f"similarity={tw.get('similarity')}.",
-            component_ids=[top["suspect_component"]], ts_range=(0.0, 0.0),
-            hypothesis_id=top["hypothesis_id"],
-        )
+        if tw:                                      # a twin_fn may decline (--no-twin ablation)
+            top["twin"] = tw
+            top1_twin = tw.get("verdict", "pending")
+            ledger.twin_result(
+                statement=f"Twin for {top['suspect_component']}: verdict={top1_twin}, "
+                          f"similarity={tw.get('similarity')}.",
+                component_ids=[top["suspect_component"]], ts_range=(0.0, 0.0),
+                hypothesis_id=top["hypothesis_id"],
+            )
 
     final: list[RankedHypothesis] = []
     for rank_i, d in enumerate(dumped, start=1):

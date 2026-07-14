@@ -218,6 +218,26 @@ class EventStore:
         finally:
             con.close()
 
+    def case_summaries(self) -> list[dict]:
+        """(case_id, n_events, n_components) for every case — ONE scan, not one per case.
+
+        `GET /cases` lists ~26 cases; counting them individually would re-scan the
+        whole store 26 times (the real RE2-SS case alone is ~186k rows).
+        """
+        if not self._has_data():
+            return []
+        con = duckdb.connect()
+        try:
+            rows = con.execute(
+                "SELECT case_id, COUNT(*) AS n_events, "
+                "COUNT(DISTINCT component_id) AS n_components "
+                "FROM read_parquet(?, union_by_name=true) GROUP BY case_id ORDER BY case_id",
+                [self._glob()],
+            ).fetchall()
+        finally:
+            con.close()
+        return [{"case_id": c, "n_events": int(n), "n_components": int(k)} for c, n, k in rows]
+
     def count(self, case_id: str | None = None) -> int:
         if not self._has_data():
             return 0

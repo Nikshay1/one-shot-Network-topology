@@ -88,13 +88,50 @@ def warm_all_demo_scenarios(out_root: str | Path = "data/demo", verbose: bool = 
     return results
 
 
+def case_for(n: int) -> str:
+    """The case_id of demo scenario N (1-based) — the mapping `make demo-N` uses."""
+    demo = demo_scenarios()
+    if not 1 <= n <= len(demo):
+        raise SystemExit(f"demo scenario {n} out of range (1..{len(demo)})")
+    return demo[n - 1]["variant_id"]
+
+
+def assert_warm(case_id: str, directory: str | Path = DEFAULT_DIR) -> dict:
+    """A demo must never discover a cold cache in front of an audience. Fail loudly
+    and say exactly how to fix it."""
+    rec = get("demo", key_for(case_id), directory)
+    if rec is None:
+        raise SystemExit(
+            f"COLD CACHE for {case_id!r}: no demo cache entry under {Path(directory) / 'demo'}.\n"
+            f"  fix: py -m backend.narrate.cache --warm-cache --all-demo-scenarios")
+    print(f"-- warm cache OK for {case_id}: mode={rec.get('mode')} top={rec.get('top')} "
+          f"remediation={rec.get('remediation')} narration_valid={rec.get('narration_valid')}")
+    return rec
+
+
 def _main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="narrate.cache")
     ap.add_argument("--warm-cache", action="store_true")
     ap.add_argument("--all-demo-scenarios", action="store_true")
+    ap.add_argument("--case-for", type=int, default=None, metavar="N",
+                    help="print the case_id of demo scenario N (used by make demo-N)")
+    ap.add_argument("--assert-warm", default=None, metavar="CASE_ID",
+                    help="exit non-zero unless CASE_ID's demo cache is warm")
+    ap.add_argument("--list", action="store_true", help="list the demo scenarios")
     ap.add_argument("--out", default="data/demo")
+    ap.add_argument("--cache-dir", default=str(DEFAULT_DIR))
     args = ap.parse_args(argv[1:])
 
+    if args.case_for is not None:
+        print(case_for(args.case_for))
+        return 0
+    if args.assert_warm:
+        assert_warm(args.assert_warm, args.cache_dir)
+        return 0
+    if args.list:
+        for i, v in enumerate(demo_scenarios(), start=1):
+            print(f"{i:>2}  {v['variant_id']:<24} {v['scenario_type']}")
+        return 0
     if args.warm_cache and args.all_demo_scenarios:
         print(f"warming {len(demo_scenarios())} demo scenarios end-to-end ...")
         rows = warm_all_demo_scenarios(args.out)
