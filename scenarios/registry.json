@@ -1,0 +1,45 @@
+{
+  "description": "VERDICT synthetic scenario registry. 25 labeled variants across 7 scenario types. Each variant's effective seed = base_seed*100000 + seed_key, so `--build-all --seed 42` is fully reproducible. Events flow through the same EventEnvelope + EventStore paths as real cases; the only 'synthetic' marker lives in the label sidecar.",
+  "scenario_types": [
+    "clean_cascade",
+    "red_herring_config",
+    "alert_storm",
+    "confounded_pair",
+    "missing_telemetry",
+    "topology_drift",
+    "ambiguous"
+  ],
+  "variants": [
+    {"variant_id": "clean_cascade-01", "scenario_type": "clean_cascade", "seed_key": 101, "params": {"fault_service": "catalogue", "fault_type": "cpu"}},
+    {"variant_id": "clean_cascade-02", "scenario_type": "clean_cascade", "seed_key": 102, "params": {"fault_service": "orders", "fault_type": "mem"}},
+    {"variant_id": "clean_cascade-03", "scenario_type": "clean_cascade", "seed_key": 103, "params": {"fault_service": "carts", "fault_type": "delay"}},
+    {"variant_id": "clean_cascade-04", "scenario_type": "clean_cascade", "seed_key": 104, "params": {"fault_service": "payment", "fault_type": "socket"}},
+    {"variant_id": "clean_cascade-05", "scenario_type": "clean_cascade", "seed_key": 105, "params": {"fault_service": "user", "fault_type": "loss"}},
+
+    {"variant_id": "red_herring_config-01", "scenario_type": "red_herring_config", "seed_key": 201, "params": {"fault_service": "catalogue", "fault_type": "cpu"}},
+    {"variant_id": "red_herring_config-02", "scenario_type": "red_herring_config", "seed_key": 202, "params": {"fault_service": "orders", "fault_type": "disk"}},
+    {"variant_id": "red_herring_config-03", "scenario_type": "red_herring_config", "seed_key": 203, "params": {"fault_service": "carts", "fault_type": "mem"}},
+    {"variant_id": "red_herring_config-04", "scenario_type": "red_herring_config", "seed_key": 204, "params": {"fault_service": "payment", "fault_type": "delay"}},
+    {"variant_id": "red_herring_config-05", "scenario_type": "red_herring_config", "seed_key": 205, "params": {"fault_service": "user", "fault_type": "cpu"}},
+
+    {"variant_id": "alert_storm-01", "scenario_type": "alert_storm", "seed_key": 301, "params": {"fault_service": "orders", "fault_type": "cpu", "size": 160}},
+    {"variant_id": "alert_storm-02", "scenario_type": "alert_storm", "seed_key": 302, "params": {"fault_service": "catalogue", "fault_type": "mem", "size": 180}},
+    {"variant_id": "alert_storm-03", "scenario_type": "alert_storm", "seed_key": 303, "params": {"fault_service": "payment", "fault_type": "delay", "size": 200}},
+
+    {"variant_id": "confounded_pair-01", "scenario_type": "confounded_pair", "seed_key": 401, "params": {"upstream": "orders", "downstream": "payment"}},
+    {"variant_id": "confounded_pair-02", "scenario_type": "confounded_pair", "seed_key": 402, "params": {"upstream": "catalogue", "downstream": "catalogue-db"}},
+    {"variant_id": "confounded_pair-03", "scenario_type": "confounded_pair", "seed_key": 403, "params": {"upstream": "carts", "downstream": "carts-db"}},
+    {"variant_id": "confounded_pair-04", "scenario_type": "confounded_pair", "seed_key": 404, "params": {"upstream": "user", "downstream": "user-db"}},
+
+    {"variant_id": "missing_telemetry-01", "scenario_type": "missing_telemetry", "seed_key": 501, "params": {"fault_service": "carts-db", "fault_type": "disk"}},
+    {"variant_id": "missing_telemetry-02", "scenario_type": "missing_telemetry", "seed_key": 502, "params": {"fault_service": "orders-db", "fault_type": "mem"}},
+    {"variant_id": "missing_telemetry-03", "scenario_type": "missing_telemetry", "seed_key": 503, "params": {"fault_service": "catalogue-db", "fault_type": "cpu"}},
+    {"variant_id": "missing_telemetry-04", "scenario_type": "missing_telemetry", "seed_key": 504, "params": {"fault_service": "user-db", "fault_type": "socket"}},
+
+    {"variant_id": "topology_drift-01", "scenario_type": "topology_drift", "seed_key": 601, "params": {"fault_service": "orders", "fault_type": "cpu"}},
+    {"variant_id": "topology_drift-02", "scenario_type": "topology_drift", "seed_key": 602, "params": {"fault_service": "front-end", "fault_type": "delay"}},
+
+    {"variant_id": "ambiguous-01", "scenario_type": "ambiguous", "seed_key": 701, "params": {"tag": "a"}},
+    {"variant_id": "ambiguous-02", "scenario_type": "ambiguous", "seed_key": 702, "params": {"tag": "b"}}
+  ]
+}

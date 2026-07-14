@@ -44,6 +44,30 @@ The golden case yields **185,943 events** (107,908 metric + 78,035 log) across a
 16-node topology; every `event_id` is schema-valid and unique and every
 `component_id` is a topology node.
 
+## STEP 3 — overlay + scenario generator
+
+Synthetic config/alert events layered on real cases, plus 7 fully-synthetic
+scenario types → 25 labeled variants. All ground truth lives in label sidecars,
+never in event payloads; scenario events use the same envelope + store paths.
+
+- **`backend/overlay/config_overlay.py`** — `apply(bundle, seed)`: injects 3–6
+  config events (70% innocent red herrings 30–120s before the fault, off the
+  causal path; 30% plausible triggers on the faulty component when the fault
+  type could follow a change) and synthesizes SNMP-style alerts by thresholding
+  real metrics. Deterministic per seed; `innocent`/`synthetic` flags go to the
+  sidecar only.
+- **`backend/overlay/scenarios.py`** — 7 generators (clean cascade, red-herring
+  config, alert storm 150+, confounded pair, missing telemetry, topology drift,
+  ambiguous "I don't know"), each `build(seed) -> (CaseBundle, LabelFile)`.
+- **`scenarios/registry.json`** — 25 parameterized variants;
+  `--build-all --seed 42` is fully reproducible (identical `event_id`s on
+  rebuild).
+
+```bash
+py -m backend.overlay.scenarios --build-all --seed 42 --out data/parquet
+py -m backend.overlay.config_overlay data/re2_ss/catalogue_cpu --seed 42 --out data/parquet
+```
+
 ### Non-negotiable rules
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
 2. `component_id` is produced ONLY by `normalize_component()`.

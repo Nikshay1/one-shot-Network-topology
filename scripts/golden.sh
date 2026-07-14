@@ -79,5 +79,50 @@ print(f"STEP 2 OK: {len(bundle.events)} events, "
       f"{bundle.topology.number_of_nodes()} nodes, resolve OK")
 PYEOF
 
+# --- STEP 3: overlay + scenario generator ---
+echo "== VERDICT golden: STEP 3 scenarios + overlay =="
+"$PY" - <<'PYEOF'
+import tempfile, json
+from pathlib import Path
+from backend.overlay.scenarios import build_all, load_registry
+from backend.ingest.store import EventStore
+
+base = tempfile.mkdtemp()
+reg = load_registry()
+
+# build all scenarios deterministically at seed 42
+r1 = build_all(42, base + "/p1", base + "/l1")
+assert len(r1) >= 25, f"only {len(r1)} variants"
+
+# 25+ label files written
+labels = list(Path(base + "/l1").glob("*.json"))
+assert len(labels) >= 25, f"only {len(labels)} label files"
+
+# every red_herring variant: >=1 innocent config within 120s of incident start
+for _, label in r1:
+    if label.scenario_type != "red_herring_config":
+        continue
+    inj = label.inject_time
+    cfg_ts = {c["event_id"]: c["ts"] for c in label.injected_configs}
+    within = [e for e in label.ground_truth_innocent if inj - 120 <= cfg_ts.get(e, -1e18) <= inj]
+    assert within, f"{label.case_id}: no innocent config within 120s"
+
+# alert_storm variants: >=150 alerts, and store round-trips
+store = EventStore(base + "/p1")
+for b, label in r1:
+    if label.scenario_type == "alert_storm":
+        n = sum(1 for e in b.events if e.source == "alert")
+        assert n >= 150, (label.case_id, n)
+sample = [e.event_id for e in r1[0][0].events[:100]]
+assert store.resolve(sample) is True
+
+# determinism: rebuild seed 42 -> identical event_ids
+r2 = build_all(42, base + "/p2", base + "/l2")
+for (b1, _), (b2, _) in zip(r1, r2):
+    assert [e.event_id for e in b1.events] == [e.event_id for e in b2.events], b1.case_id
+
+print(f"STEP 3 OK: {len(r1)} variants, {len(labels)} labels, deterministic, storms>=150")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---
