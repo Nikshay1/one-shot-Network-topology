@@ -20,3 +20,6 @@ dist/
 build/
 .DS_Store
 data/transcripts/
+data/reports/
+data/cache/
+data/demo/

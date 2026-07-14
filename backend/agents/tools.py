@@ -153,6 +153,39 @@ class RunTwinOut(_Model):
     missing_evidence: list[str]
 
 
+class GetVerdictSummaryIn(_Model):
+    pass
+
+
+class GetVerdictSummaryOut(_Model):
+    hypotheses: list[dict[str, Any]]
+
+
+class ListRemediesIn(_Model):
+    fault_type: str
+
+
+class ListRemediesOut(_Model):
+    fault_type: str
+    remedies: list[str]
+
+
+class RehearseFixIn(_Model):
+    component: str
+    fault_type: str
+    remedy: str
+
+
+class RehearseFixOut(_Model):
+    status: str
+    remedy: str
+    symptoms_cleared_pct: float
+    sim_time_to_recover_s: float
+    residual_symptoms: list[str]
+    side_effects: list[str]
+    fact_id: str
+
+
 class FileFindingIn(_Model):
     kind: str
     statement: str
@@ -261,6 +294,41 @@ def _run_twin(inp: RunTwinIn, ctx: ToolContext) -> RunTwinOut:
     return RunTwinOut(status="ok", **block)
 
 
+def _get_verdict_summary(inp: GetVerdictSummaryIn, ctx: ToolContext) -> GetVerdictSummaryOut:
+    """Compact summary of the current ranked verdict (suspect, tier, fault, twin)."""
+    return GetVerdictSummaryOut(hypotheses=[{
+        "rank": h.rank, "hypothesis_id": h.hypothesis_id, "suspect": h.suspect_component,
+        "score": round(h.score, 4), "tier": h.tier, "fault_type": h.fault_type_guess,
+        "twin": (h.twin.verdict if h.twin else None),
+    } for h in ctx.ranked()[:5]])
+
+
+def _list_remedies(inp: ListRemediesIn, ctx: ToolContext) -> ListRemediesOut:
+    """Catalogued remediations for a fault type."""
+    from backend.twin.remedies import REMEDIES
+    return ListRemediesOut(fault_type=inp.fault_type,
+                           remedies=[r.name for r in REMEDIES.get(inp.fault_type, [])])
+
+
+def _rehearse_fix(inp: RehearseFixIn, ctx: ToolContext) -> RehearseFixOut:
+    """Rehearse a remedy in the twin; files the remediation_result fact."""
+    from backend.twin.remedies import Remedy, rehearse
+    rep = rehearse(ctx.topology, inp.component, inp.fault_type, Remedy(inp.remedy))
+    fact_id = ctx.ledger.remediation_result(
+        statement=f"Rehearsed {rep.remedy} on {inp.component} ({inp.fault_type}): cleared "
+                  f"{rep.symptoms_cleared_pct:.0f}% of symptoms in "
+                  f"{rep.sim_time_to_recover_s:.0f}s sim-time "
+                  f"(residual={rep.residual_symptoms or 'none'}, "
+                  f"side_effects={rep.side_effects or 'none'}).",
+        component_ids=[inp.component], ts_range=(0.0, 0.0), hypothesis_id=None,
+    )
+    return RehearseFixOut(status="ok", remedy=rep.remedy,
+                          symptoms_cleared_pct=rep.symptoms_cleared_pct,
+                          sim_time_to_recover_s=rep.sim_time_to_recover_s,
+                          residual_symptoms=rep.residual_symptoms,
+                          side_effects=rep.side_effects, fact_id=fact_id)
+
+
 def _file_finding(inp: FileFindingIn, ctx: ToolContext) -> FileFindingOut:
     if inp.kind not in _LEDGER_KINDS:
         return FileFindingOut(ok=False, error="invalid_kind",
@@ -316,6 +384,12 @@ _register("check_path", CheckPathIn, CheckPathOut, _check_path, 0)
 _register("get_topology_summary", GetTopologySummaryIn, GetTopologySummaryOut, _get_topology_summary, 0)
 _register("get_events", GetEventsIn, GetEventsOut, _get_events, 0)
 _register("get_ledger", GetLedgerIn, GetLedgerOut, _get_ledger, 0)
+# The narrator's SINGLE tool: the ledger is its only view of the world.
+_register("query_evidence_ledger", GetLedgerIn, GetLedgerOut, _get_ledger, 0)
+# Fix-Rehearsal agent
+_register("get_verdict_summary", GetVerdictSummaryIn, GetVerdictSummaryOut, _get_verdict_summary, 0)
+_register("list_remedies", ListRemediesIn, ListRemediesOut, _list_remedies, 0)
+_register("rehearse_fix", RehearseFixIn, RehearseFixOut, _rehearse_fix, 1)
 _register("run_counterfactual", RunCounterfactualIn, RunCounterfactualOut, _run_counterfactual, 1)
 _register("run_twin", RunTwinIn, RunTwinOut, _run_twin, 2)
 _register("file_finding", FileFindingIn, FileFindingOut, _file_finding, 0)

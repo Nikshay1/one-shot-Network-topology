@@ -33,7 +33,11 @@ class NodeState:
 class Calibration:
     base_service: dict[str, float] = field(default_factory=dict)
     capacity: dict[str, int] = field(default_factory=dict)
-    arrival_rate: float = 30.0
+    # Calibrated so a -70% capacity cut actually bites: at 30/s a single-caller
+    # service (e.g. catalogue) stays at ~0.11 utilisation and a cpu fault is
+    # invisible (1.16x latency, under the symptom threshold). At 60/s it saturates
+    # properly (2.7x) and the cascade reaches front-end.
+    arrival_rate: float = 60.0
     call_weights: dict[tuple[str, str], float] = field(default_factory=dict)
 
 

@@ -14,18 +14,27 @@ from backend.rank.constants import TWIN_MATCH_THETA, TWIN_PARTIAL_THETA
 from backend.twin.model import FEATURES
 
 
-def _znorm(deltas: dict[str, list[float]]) -> dict[str, list[float]]:
-    comps = sorted(deltas)
-    if not comps:
-        return {}
-    nf = len(FEATURES)
-    out = {c: [0.0] * nf for c in comps}
-    for f in range(nf):
+def _std(col: list[float]) -> float:
+    mean = sum(col) / len(col)
+    return (sum((x - mean) ** 2 for x in col) / len(col)) ** 0.5
+
+
+def informative_features(deltas: dict[str, list[float]], comps: list[str]) -> set[int]:
+    """Feature indices that actually vary across components. A feature the system
+    does not instrument (all zeros) carries no signal and must not be compared."""
+    return {f for f in range(len(FEATURES))
+            if comps and _std([deltas[c][f] for c in comps]) > 1e-9}
+
+
+def _znorm(deltas: dict[str, list[float]], comps: list[str], feats: list[int]) -> dict[str, list[float]]:
+    """z-normalize each SHARED feature across the shared components."""
+    out: dict[str, list[float]] = {c: [] for c in comps}
+    for f in feats:
         col = [deltas[c][f] for c in comps]
         mean = sum(col) / len(col)
-        std = (sum((x - mean) ** 2 for x in col) / len(col)) ** 0.5 or 1.0
+        std = _std(col) or 1.0
         for c in comps:
-            out[c][f] = (deltas[c][f] - mean) / std
+            out[c].append((deltas[c][f] - mean) / std)
     return out
 
 
@@ -48,9 +57,14 @@ def compare(
     instrumented_real: set[str],
 ) -> dict:
     shared = sorted(set(sim_deltas) & set(real_deltas) & set(instrumented_real))
-    if shared:
-        sim_sig = _znorm({c: sim_deltas[c] for c in shared})
-        real_sig = _znorm({c: real_deltas[c] for c in shared})
+    # compare only over features BOTH sides actually carry signal in — a feature the
+    # real system does not instrument (all zeros) would otherwise drag cosine down
+    # even when sim and real agree on which component is anomalous.
+    feats = sorted(informative_features(sim_deltas, shared)
+                   & informative_features(real_deltas, shared))
+    if shared and feats:
+        sim_sig = _znorm(sim_deltas, shared, feats)
+        real_sig = _znorm(real_deltas, shared, feats)
         vs = [x for c in shared for x in sim_sig[c]]
         vr = [x for c in shared for x in real_sig[c]]
         similarity = max(0.0, cosine(vs, vr))
@@ -71,4 +85,5 @@ def compare(
         "missing_evidence": missing,
         "recommendations": recommendations,
         "shared": shared,
+        "shared_features": [FEATURES[f] for f in feats],
     }

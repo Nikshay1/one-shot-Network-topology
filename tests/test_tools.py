@@ -49,6 +49,8 @@ def test_registry_contents_and_costs() -> None:
         "get_anomalies": 0, "get_candidates": 0, "check_path": 0,
         "get_topology_summary": 0, "get_events": 0, "get_ledger": 0,
         "run_counterfactual": 1, "run_twin": 2, "file_finding": 0,
+        "query_evidence_ledger": 0,                       # narrator's single tool
+        "get_verdict_summary": 0, "list_remedies": 0, "rehearse_fix": 1,   # fix-rehearsal
     }
     assert set(REGISTRY) == set(expected)
     for name, cost in expected.items():
