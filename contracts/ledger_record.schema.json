@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://verdict.dev/contracts/ledger_record.schema.json",
   "title": "LedgerRecord",
-  "description": "One immutable fact in the evidence ledger.",
+  "version": "1.1",
+  "description": "One immutable fact in the evidence ledger. (v1.1: adds investigation_note and remediation_result kinds.)",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -32,7 +33,9 @@
         "counterfactual_result",
         "twin_result",
         "coverage_gap",
-        "hypothesis_scored"
+        "hypothesis_scored",
+        "investigation_note",
+        "remediation_result"
       ]
     },
     "statement": { "type": "string", "maxLength": 300 },

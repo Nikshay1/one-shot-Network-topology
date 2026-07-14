@@ -237,6 +237,8 @@ LedgerKind = Literal[
     "twin_result",
     "coverage_gap",
     "hypothesis_scored",
+    "investigation_note",   # v1.1
+    "remediation_result",   # v1.1
 ]
 Modality = Literal["metric", "log", "alert", "topology", "config", "mixed", "derived"]
 

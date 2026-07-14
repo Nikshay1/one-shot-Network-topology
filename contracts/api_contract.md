@@ -1,4 +1,7 @@
-# VERDICT API Contract (v0.1, frozen)
+# VERDICT API Contract (v1.1)
+
+> v1.1: adds the agent-transcript and remediation endpoints plus the
+> `agent_step`, `agent_done`, and `remediation_result` SSE events.
 
 All bodies are JSON unless noted. IDs follow the regexes frozen in the four
 schema files in this directory. `component_id` values are ONLY ever produced by
@@ -18,6 +21,8 @@ never exposed by any endpoint.
 | GET | `/run/{id}/narration` | — | `200` `{run_id, chunks: [{ts, text}]}` |
 | GET | `/run/{id}/report.pdf` | — | `200` `application/pdf` |
 | POST | `/run/{id}/counterfactual` | `{remove_component: component_id}` | `200` `{removed, anomalies_still_explained_pct, affected_hypotheses}` |
+| GET | `/run/{run_id}/agent/{agent_name}/transcript` | — | `200` `application/x-ndjson` — JSONL of agent steps (one step per line) |
+| GET | `/run/{run_id}/remediation` | — | `200` `RemediationReport` (JSON) |
 | GET | `/benchmark` | — | `200` `{runs: [...], metrics: {...}}` |
 | GET | `/health` | — | `200` `{status: "ok", version}` |
 
@@ -43,6 +48,9 @@ terminates a failed run.
 | `twin_started` | `{hypothesis_id, run}` | |
 | `twin_result` | `{hypothesis_id, run, similarity, verdict, missing_evidence}` | |
 | `challenger_attack` | `{hypothesis_id, claim, contradicting_event_id, upheld}` | |
+| `agent_step` | `{agent, tool, args_summary, result_summary}` | one per agent tool call (v1.1) |
+| `agent_done` | `{agent, status, summary}` | terminal event for one agent (v1.1) |
+| `remediation_result` | `{hypothesis_id, remedy, symptoms_cleared_pct, sim_time_to_recover_s}` | simulated remediation outcome (v1.1) |
 | `narration_chunk` | `{ts, text}` | streamed narration token/chunk |
 | `tier_changed` | `{hypothesis_id, tier, tier_reason}` | **emitted only by the ranking stage** |
 | `pipeline_done` | `{run_id, n_hypotheses}` | ALWAYS last on success |
