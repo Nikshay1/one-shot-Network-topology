@@ -48,6 +48,48 @@ runs **193 tests** plus end-to-end data checks for stages 2–8 (~3.5 min).
 > Unverified: `harness.OpenAIClient` tool-call parsing at temperature 0, and how a
 > real model actually spends its 3 cost points.
 
+## Bugs worth remembering (found and fixed)
+
+Two real bugs in the stage-8 agent layer. Both are **fixed**, but they're recorded
+because of *how* they were found: the full test suite was green and both were
+invisible to it — only running the CLI end-to-end surfaced them. Both had the same
+root cause: **the run's ledger was not fresh**.
+
+### 1. The rule-11 autopilot fallback never fired
+`investigate_and_rescore` decided "did the agent contribute?" by asking whether the
+ledger contained any counterfactual/twin facts *at all*:
+
+```python
+contributed = bool(counterfactual_components(ledger) or twin_facts(ledger))   # WRONG
+```
+
+The ledger is append-only per `run_id`, so any earlier run left facts behind. On the
+second run a **dead agent looked productive** — `status=error` with zero tool calls
+still reported `contributed=True`, so the autopilot was skipped and rule 11 silently
+broke. Observed live: `agent_status=error … autopilot=False`.
+
+*Fix:* measure what the ledger **gained** (the spec's own word) — snapshot before the
+agent, diff after:
+```python
+contributed = bool((counterfactual_components(ledger) - before_cf)
+                   or (set(twin_facts(ledger)) - before_twin))
+```
+
+### 2. `OFFLINE=1` replay could never hit the cache
+The transcript cache key is `hash(run_id + ledger digest at agent start + prompt
+version)`. But the rescore appends `hypothesis_scored` facts to the same run's
+ledger, so **every run started from a different ledger state** — the digest drifted,
+the key changed, and the cached transcript was never found. Observed live: two runs
+of the same case produced keys `cb1303c9…` and `887ec103…`.
+
+*Fix:* a run now starts with a clean ledger (`Ledger(..., fresh=True)`) — which is
+what "one ledger per run" always meant. The digest at agent start is now stable, so
+`--live` and `OFFLINE=1` resolve to the same key (`3d9e26a3…`) and replay works.
+
+**The lesson:** state that accumulates across runs quietly poisons both correctness
+checks and cache keys. Tests using `tmp_path` never see it, because every test gets a
+pristine directory. Some bugs only exist on the second run.
+
 ## Repository layout
 
 ```
