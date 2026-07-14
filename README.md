@@ -32,10 +32,11 @@ server, and every data shape is a frozen contract.
 | 4 | Detection layer (metrics, logs, alerts, config) | ✅ |
 | 5 | Localize + deterministic rank floor + ledger + agent tool registry | ✅ |
 | 6 | Counterfactual mechanism + single tier writer + deterministic autopilot | ✅ |
-| 7+ | Twin, remediation, narrator, agents, API/UI | ⏳ |
+| 7 | SimPy twin + verification + remediation primitives | ✅ |
+| 8+ | Agents, narrator, API/UI | ⏳ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **140 tests** plus end-to-end data checks for stages 2–6.
+runs **154 tests** plus end-to-end data checks for stages 2–7.
 
 ## Repository layout
 
@@ -48,6 +49,7 @@ backend/
   localize/             blast (k-hop blast radius)
   rank/                 candidates · scorer · tiers · counterfactual · autopilot · constants
   ledger/               ledger (append-only JSONL evidence)
+  twin/                 model · faults · remedies · compare · runner (SimPy)
   agents/               tools (typed registry) · budget
   models.py             pydantic v2 models mirroring every schema
 fixtures/               hand-written schema-valid sample data
@@ -214,6 +216,33 @@ stays in the top-3.
 py -m backend.rank.autopilot --case catalogue_cpu-1 --top 5
 ```
 
+### 7 — SimPy twin, verification & remediation (`backend/twin`)
+
+- **model.py** — a SimPy queueing twin built FROM `topology.json`: each service is
+  a resizable pool of capacity slots calibrated from pre-incident latency means,
+  driven open-loop at the pre-incident throughput. Calls are synchronous, so a
+  downstream bottleneck cascades latency upward. Emits per-component windowed
+  `[latency_mean, latency_p95, error_rate, throughput, utilization]`.
+- **faults.py** — `inject(model, fault_type, component)`: cpu (capacity −70%),
+  mem (service time ramps), disk (inflates db service), delay (+inbound ms),
+  loss (drop p%), socket (caps concurrency), config_push (diff effect else delay).
+- **remedies.py** — `REMEDIES` catalog per fault type + `apply()` (restart with
+  10s downtime, scale_replicas, rollback_config, reroute, throttle, add_capacity,
+  raise_conn_limit) and `rehearse(...) -> RecoveryReport{remedy,
+  symptoms_cleared_pct, sim_time_to_recover_s, residual_symptoms, side_effects}`.
+- **compare.py** — z-normalized per-component delta signatures; cosine similarity
+  over components instrumented in BOTH; verdict ≥0.80 match / ≥0.50 partial /
+  else mismatch (θ in `rank/constants.py`). Sim-only symptoms at uninstrumented
+  components become missing-evidence + recommendations.
+- **runner.py** — 3 seeded repetitions averaged under a 30s wall budget; returns
+  the twin block, files a `twin_result` fact, and hands the verdict to `tiers.py`
+  (match ⇒ CONFIRMED possible; mismatch ⇒ caps at CORRELATED, never auto-dismiss).
+  The autopilot runs it for the top-1 suspect by default; `run_twin` (cost 2) is live.
+
+```bash
+py -m backend.twin.runner --case catalogue_cpu-1 --component catalogue --fault cpu
+```
+
 ## Non-negotiable rules
 
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
@@ -245,6 +274,9 @@ in-process end-to-end checks:
 - **stage 6** (scenario-2 gate) — the full autopilot on every red-herring variant:
   the innocent config is never #1, carries `topology_no_path`/counterfactual-unchanged
   evidence, and the true root cause stays top-3.
+- **stage 7** — a cpu fault on `carts` cascades latency to `front-end` in the twin;
+  `rehearse(restart)` clears ≥50% of simulated symptoms; the autopilot's top-1
+  carries a non-null twin block.
 
 ## Dataset
 

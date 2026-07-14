@@ -145,6 +145,14 @@ class RunTwinIn(_Model):
     fault_type: str
 
 
+class RunTwinOut(_Model):
+    status: str
+    run: str
+    similarity: float
+    verdict: str
+    missing_evidence: list[str]
+
+
 class FileFindingIn(_Model):
     kind: str
     statement: str
@@ -246,8 +254,11 @@ def _run_counterfactual(inp: RunCounterfactualIn, ctx: ToolContext) -> RunCounte
                                 score_multiplier=mult, interpretation=interp, fact_id=fact_id)
 
 
-def _run_twin(inp: RunTwinIn, ctx: ToolContext) -> StubOut:
-    return StubOut(status="unavailable")  # implemented in Step 7
+def _run_twin(inp: RunTwinIn, ctx: ToolContext) -> RunTwinOut:
+    from backend.twin.runner import twin
+    block = twin(ctx.case_id, inp.component, inp.fault_type,
+                 store_root=ctx.store.root, ledger=ctx.ledger)
+    return RunTwinOut(status="ok", **block)
 
 
 def _file_finding(inp: FileFindingIn, ctx: ToolContext) -> FileFindingOut:
@@ -306,7 +317,7 @@ _register("get_topology_summary", GetTopologySummaryIn, GetTopologySummaryOut, _
 _register("get_events", GetEventsIn, GetEventsOut, _get_events, 0)
 _register("get_ledger", GetLedgerIn, GetLedgerOut, _get_ledger, 0)
 _register("run_counterfactual", RunCounterfactualIn, RunCounterfactualOut, _run_counterfactual, 1)
-_register("run_twin", RunTwinIn, StubOut, _run_twin, 2)
+_register("run_twin", RunTwinIn, RunTwinOut, _run_twin, 2)
 _register("file_finding", FileFindingIn, FileFindingOut, _file_finding, 0)
 
 

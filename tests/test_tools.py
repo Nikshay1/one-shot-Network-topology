@@ -75,9 +75,13 @@ def test_read_tools(ctx) -> None:
     assert len(ev_out.events) == 1 and ev_out.missing == ["metric-nope-000001"]
 
 
-def test_run_twin_still_stubbed(ctx) -> None:
+def test_run_twin_is_live(ctx) -> None:
     context, _ = ctx
-    assert call_tool("run_twin", {"component": "catalogue", "fault_type": "cpu"}, context).status == "unavailable"
+    out = call_tool("run_twin", {"component": "catalogue", "fault_type": "cpu"}, context)
+    assert out.status == "ok"
+    assert out.verdict in ("match", "partial", "mismatch")
+    assert 0.0 <= out.similarity <= 1.0
+    assert context.ledger.query(kind="twin_result")   # filed a twin_result fact
 
 
 def test_run_counterfactual_is_live(ctx) -> None:

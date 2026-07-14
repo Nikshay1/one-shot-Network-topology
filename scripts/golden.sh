@@ -251,5 +251,30 @@ print(f"STEP 6 OK: {cid} top1={hyps[0].suspect_component}, fault={label.fault_se
       f"innocent configs exonerated, breakdowns consistent")
 PYEOF
 
+# --- STEP 7: SimPy twin + remediation ---
+echo "== VERDICT golden: STEP 7 twin + remediation =="
+"$PY" - <<'PYEOF'
+import tempfile
+from backend.rank.autopilot import run as autopilot_run
+from backend.twin.remedies import rehearse, Remedy
+from backend.ingest.re2ss_adapter import build_topology
+
+# golden autopilot: the top-1 hypothesis carries a non-null twin block
+verdict = autopilot_run("catalogue_cpu-1", ledger_dir=tempfile.mkdtemp())
+top = verdict.hypotheses[0]
+assert top.twin is not None, "top-1 has no twin block"
+assert top.twin.verdict in ("match", "partial", "mismatch")
+assert verdict.ledger.query(kind="twin_result"), "no twin_result fact"
+
+# remediation: a restart on a cpu fault clears >=50% of simulated symptoms
+topo = build_topology({"loadgenerator", "front-end", "catalogue", "catalogue-db",
+                       "carts", "carts-db", "orders", "orders-db"})
+rep = rehearse(topo, "carts", "cpu", Remedy("restart"), seed=1)
+assert rep.symptoms_cleared_pct >= 50.0, rep
+
+print(f"STEP 7 OK: top1={top.suspect_component} twin={top.twin.verdict}, "
+      f"rehearse(restart) cleared {rep.symptoms_cleared_pct}%")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

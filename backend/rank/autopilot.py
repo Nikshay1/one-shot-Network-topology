@@ -64,6 +64,10 @@ def run(
     run_id = run_id or case_id
     ledger = Ledger(run_id, case_id, ledger_dir)
 
+    if twin_fn is None:  # default: the SimPy twin (Step 7), for the top-1 suspect
+        from backend.twin.runner import twin as _twin
+        twin_fn = lambda comp, ft: _twin(case_id, comp, ft, store_root=store_root, ledger=None)
+
     ranked = rank(case_id, anomalies, topology, store=store)
     blast = blast_radius(topology, {a.component_id for a in anomalies})
     reach_by = {h.suspect_component: reachable_upstream(topology, h.suspect_component) for h in ranked}

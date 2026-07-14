@@ -25,6 +25,10 @@ BLAST_K = 2
 # Confidence stamped on agent-filed ledger findings.
 AGENT_FINDING_CONFIDENCE = 0.7
 
+# Twin verdict thresholds (cosine similarity of sim-vs-real delta signatures).
+TWIN_MATCH_THETA = 0.80      # >= match
+TWIN_PARTIAL_THETA = 0.50    # >= partial, else mismatch
+
 
 def criticality(component: str) -> float:
     return CRITICALITY.get(component, CRITICALITY_DEFAULT)
