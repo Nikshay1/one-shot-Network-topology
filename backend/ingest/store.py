@@ -202,6 +202,22 @@ class EventStore:
         df.select(_COLUMNS).write_parquet(out_dir / "events.parquet")
         return df.height
 
+    def get_by_ids(self, event_ids: list[str]) -> pl.DataFrame:
+        """Return the store rows for the given event_ids (any case)."""
+        wanted = list(dict.fromkeys(event_ids))
+        if not wanted or not self._has_data():
+            return pl.DataFrame(schema=_SCHEMA)
+        con = duckdb.connect()
+        try:
+            con.register("wanted_ids", pl.DataFrame({"event_id": wanted}))
+            return con.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM read_parquet(?, union_by_name=true) p "
+                "SEMI JOIN wanted_ids w ON p.event_id = w.event_id",
+                [self._glob()],
+            ).pl()
+        finally:
+            con.close()
+
     def count(self, case_id: str | None = None) -> int:
         if not self._has_data():
             return 0

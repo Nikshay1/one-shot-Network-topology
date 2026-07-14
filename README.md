@@ -30,10 +30,11 @@ server, and every data shape is a frozen contract.
 | 2 | RE2-SS adapter → event store + topology | ✅ |
 | 3 | Config/alert overlay + 7-type scenario generator (25 variants) | ✅ |
 | 4 | Detection layer (metrics, logs, alerts, config) | ✅ |
-| 5+ | Ranking, tiers, evidence ledger, twin/counterfactual, API/UI | ⏳ |
+| 5 | Localize + deterministic rank floor + ledger + agent tool registry | ✅ |
+| 6+ | Counterfactual, twin, remediation, narrator, autopilot, API/UI | ⏳ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **113 tests** plus end-to-end data checks for stages 2–4.
+runs **131 tests** plus end-to-end data checks for stages 2–5.
 
 ## Repository layout
 
@@ -43,13 +44,17 @@ backend/
   ingest/               normalize · explore · re2ss_adapter · store
   overlay/              config_overlay · scenarios
   detect/               metrics · logs · alerts · config · runner
+  localize/             blast (k-hop blast radius)
+  rank/                 candidates · scorer · tiers · constants
+  ledger/               ledger (append-only JSONL evidence)
+  agents/               tools (typed registry) · budget
   models.py             pydantic v2 models mirroring every schema
 fixtures/               hand-written schema-valid sample data
 scenarios/registry.json 25 scenario variants
 scripts/                golden.sh · fetch_golden_case.sh
 docs/re2_ss.md          RE2-SS dataset reference
-data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/
-tests/                  contracts · normalize · adapter · overlay · detect
+data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/ ledger/
+tests/                  contracts · normalize · adapter · overlay · detect · rank · tools
 ```
 
 ## Setup
@@ -152,6 +157,33 @@ fall after the fault, with `inject_time` read from the sidecar in the test only.
 py -m backend.detect.runner --case catalogue_cpu-1
 ```
 
+### 5 — Localize, rank floor, ledger & agent tools (`backend/localize`, `backend/rank`, `backend/ledger`, `backend/agents`)
+
+The deterministic floor the agents stand on (and the autopilot they fall back to):
+
+- **localize/blast.py** — k-hop (k=2) blast subgraph around anomalous components,
+  walking both call (caller→callee) and symptom (callee→caller) directions;
+  per-edge direction + a criticality-weighted impact estimate.
+- **rank/candidates.py** — suspects = subgraph components with ≥1 anomaly + risky-
+  config targets; each drafts a hypothesis (statement, trigger, fault-type guess,
+  predicted symptoms from reversed reachability).
+- **rank/scorer.py** (+ `constants.py`, `tiers.py`) — five pre-weighted sub-scores
+  {coverage .30, topo .25, precedence .15, corroboration .15, pagerank .15} that
+  sum to `score`; personalized PageRank on the reversed graph; tiers assigned only
+  in `tiers.py` (rule 5).
+- **ledger/ledger.py** — append-only JSONL per run with a writer per `kind`;
+  `query()` is the ONLY read surface agents/narrator get.
+- **agents/tools.py** — the typed tool registry (`REGISTRY` name → input/output
+  pydantic models + fn + cost). `file_finding` is the only state mutation and
+  validates first (kind, event resolution, topology membership); `run_counterfactual`
+  /`run_twin` are stubbed until Steps 6/7.
+- **agents/budget.py** — harness-enforced `Budget(max_calls, max_cost_points,
+  wall_clock_s)` (rule 10), unit-tested with an injectable clock.
+
+```bash
+py -m backend.rank.scorer --case catalogue_cpu-1 --top 5   # true fault ranks in the top-3
+```
+
 ## Non-negotiable rules
 
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
@@ -177,6 +209,9 @@ in-process end-to-end checks:
   seed 42 is byte-identical.
 - **stage 4** — detected anomalies cluster after `inject_time` (≥80% score×extent
   mass) with none off-topology.
+- **stage 5** — the deterministic ranker puts the true fault service in the top-3;
+  every `score_breakdown` sums to `score`; `file_finding` accepts valid findings
+  and rejects fake event ids; budgets trip at their limits.
 
 ## Dataset
 

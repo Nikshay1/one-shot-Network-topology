@@ -159,5 +159,56 @@ assert ma / mt >= 0.80, f"only {ma/mt:.0%} of anomaly mass after inject"
 print(f"STEP 4 OK: {len(anoms)} anomalies, {ma/mt:.0%} mass after inject, all in topology")
 PYEOF
 
+# --- STEP 5: localize + deterministic rank + ledger + tools + budget ---
+echo "== VERDICT golden: STEP 5 rank + tools =="
+"$PY" - <<'PYEOF'
+import tempfile
+from backend.overlay.scenarios import gen_clean_cascade
+from backend.ingest.store import EventStore
+from backend.detect.runner import detect
+from backend.rank.scorer import rank
+from backend.localize.blast import blast_radius
+from backend.ledger.ledger import Ledger
+from backend.agents.tools import ToolContext, call_tool
+from backend.agents.budget import Budget, BudgetExceeded
+
+tmp = tempfile.mkdtemp()
+bundle, _ = gen_clean_cascade("gc5", 42, fault_service="catalogue", fault_type="cpu")
+store = EventStore(tmp + "/p")
+store.write_case(bundle)
+store.write_topology("gc5", bundle.topology)
+anoms = detect("gc5", store_root=tmp + "/p", out_dir=tmp + "/a", drain_dir=tmp + "/d")
+
+# deterministic ranking: true fault in top-3, and every breakdown sums to score
+ranked = rank("gc5", anoms, bundle.topology)
+top3 = [h.suspect_component for h in ranked[:3]]
+assert "catalogue" in top3, top3
+for h in ranked:
+    assert abs(sum(h.score_breakdown.model_dump().values()) - h.score) < 1e-6
+
+# tools: file_finding validates (accept real, reject fake) + budget trips
+blast = blast_radius(bundle.topology, {a.component_id for a in anoms})
+ctx = ToolContext(case_id="gc5", store=store, topology=bundle.topology,
+                  anomalies=anoms, blast=blast, ledger=Ledger("gc5", "gc5", ledger_dir=tmp + "/l"))
+ev = anoms[0].evidence_event_ids[0]
+ok = call_tool("file_finding", {"kind": "investigation_note", "statement": "candidate",
+               "component_ids": [anoms[0].component_id], "event_ids": [ev]}, ctx)
+assert ok.ok and ok.fact_id
+bad = call_tool("file_finding", {"kind": "investigation_note", "statement": "x",
+                "component_ids": [anoms[0].component_id], "event_ids": ["metric-fake-000001"]}, ctx)
+assert bad.ok is False and bad.error == "unresolved_event_id"
+
+b = Budget(max_calls=2).start()
+call_tool("get_anomalies", {}, ctx, budget=b)
+call_tool("get_anomalies", {}, ctx, budget=b)
+try:
+    call_tool("get_anomalies", {}, ctx, budget=b)
+    raise SystemExit("budget failed to trip")
+except BudgetExceeded:
+    pass
+
+print(f"STEP 5 OK: top3={top3}, {len(ranked)} candidates, file_finding validates, budget trips")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

@@ -4,6 +4,7 @@ data/parquet/
 data/labels/
 data/anomalies/
 data/drain3/
+data/ledger/
 .env
 __pycache__/
 *.py[cod]
