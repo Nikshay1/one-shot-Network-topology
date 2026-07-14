@@ -1,0 +1,212 @@
+"""EventStore — DuckDB + Parquet event store.
+
+Parquet is partitioned on disk by ``case_id`` / ``source``; DuckDB is the query
+engine. Runnable/testable via CLI without the API server.
+
+    py -m backend.ingest.store info data/parquet
+    py -m backend.ingest.store events data/parquet <case_id> --source metric
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+import duckdb
+import polars as pl
+
+from backend.models import EventEnvelope
+
+# Physical/queryable columns written per event. payload_json carries the full
+# typed payload so an EventEnvelope can always be reconstructed losslessly.
+_COLUMNS = [
+    "event_id",
+    "case_id",
+    "source",
+    "component_id",
+    "ts",
+    "metric_name",
+    "value",
+    "level",
+    "message",
+    "template_id",
+    "payload_json",
+]
+
+_SCHEMA: dict[str, Any] = {
+    "event_id": pl.Utf8,
+    "case_id": pl.Utf8,
+    "source": pl.Utf8,
+    "component_id": pl.Utf8,
+    "ts": pl.Float64,
+    "metric_name": pl.Utf8,
+    "value": pl.Float64,
+    "level": pl.Utf8,
+    "message": pl.Utf8,
+    "template_id": pl.Utf8,
+    "payload_json": pl.Utf8,
+}
+
+
+def _event_row(ev: EventEnvelope) -> dict[str, Any]:
+    """Flatten an EventEnvelope into a store row (typed common cols + payload)."""
+    p = ev.payload
+    row: dict[str, Any] = {
+        "event_id": ev.event_id,
+        "case_id": ev.case_id,
+        "source": ev.source,
+        "component_id": ev.component_id,
+        "ts": ev.ts,
+        "metric_name": None,
+        "value": None,
+        "level": None,
+        "message": None,
+        "template_id": None,
+        "payload_json": p.model_dump_json(),
+    }
+    kind = p.kind
+    if kind == "metric":
+        row["metric_name"] = p.name
+        row["value"] = float(p.value)
+    elif kind == "log":
+        row["level"] = p.level
+        row["message"] = p.message
+        row["template_id"] = p.template_id
+    elif kind == "alert":
+        row["metric_name"] = p.name
+        row["value"] = float(p.severity)
+    elif kind == "config":
+        row["metric_name"] = p.key
+    elif kind == "topology":
+        row["message"] = f"{p.relation}:{p.target_component_id}"
+    return row
+
+
+class EventStore:
+    """Append/query event store backed by partitioned Parquet + DuckDB."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    # -- write ------------------------------------------------------------
+    def write_case(self, bundle: "CaseBundle") -> int:  # noqa: F821 (fwd ref)
+        """Write all events of a case, partitioned by case_id/source. Returns count."""
+        rows = [_event_row(ev) for ev in bundle.events]
+        if not rows:
+            return 0
+        df = pl.DataFrame(rows, schema=_SCHEMA)
+        written = 0
+        for (case_id, source), part in df.group_by(["case_id", "source"], maintain_order=True):
+            out_dir = self.root / f"case_id={case_id}" / f"source={source}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            part.write_parquet(out_dir / "events.parquet")
+            written += part.height
+        return written
+
+    # -- query ------------------------------------------------------------
+    def _glob(self) -> str:
+        return str(self.root / "**" / "*.parquet")
+
+    def _has_data(self) -> bool:
+        return any(self.root.rglob("*.parquet"))
+
+    def events(
+        self,
+        case_id: str,
+        source: str | None = None,
+        component_id: str | None = None,
+        t0: float | None = None,
+        t1: float | None = None,
+    ) -> pl.DataFrame:
+        """Query events for a case with optional source/component/time filters."""
+        if not self._has_data():
+            return pl.DataFrame(schema=_SCHEMA)
+        clauses = ["case_id = ?"]
+        params: list[Any] = [case_id]
+        if source is not None:
+            clauses.append("source = ?")
+            params.append(source)
+        if component_id is not None:
+            clauses.append("component_id = ?")
+            params.append(component_id)
+        if t0 is not None:
+            clauses.append("ts >= ?")
+            params.append(float(t0))
+        if t1 is not None:
+            clauses.append("ts <= ?")
+            params.append(float(t1))
+        where = " AND ".join(clauses)
+        query = (
+            f"SELECT {', '.join(_COLUMNS)} FROM read_parquet(?, union_by_name=true) "
+            f"WHERE {where} ORDER BY ts, event_id"
+        )
+        con = duckdb.connect()
+        try:
+            return con.execute(query, [self._glob(), *params]).pl()
+        finally:
+            con.close()
+
+    def resolve(self, event_ids: list[str]) -> bool:
+        """True iff every id in event_ids exists in the store."""
+        wanted = set(event_ids)
+        if not wanted:
+            return True
+        if not self._has_data():
+            return False
+        con = duckdb.connect()
+        try:
+            con.register("wanted_ids", pl.DataFrame({"event_id": list(wanted)}))
+            found = con.execute(
+                "SELECT COUNT(DISTINCT p.event_id) FROM read_parquet(?, union_by_name=true) p "
+                "SEMI JOIN wanted_ids w ON p.event_id = w.event_id",
+                [self._glob()],
+            ).fetchone()[0]
+            return int(found) == len(wanted)
+        finally:
+            con.close()
+
+    def count(self, case_id: str | None = None) -> int:
+        if not self._has_data():
+            return 0
+        con = duckdb.connect()
+        try:
+            if case_id is None:
+                q, params = "SELECT COUNT(*) FROM read_parquet(?, union_by_name=true)", [self._glob()]
+            else:
+                q = "SELECT COUNT(*) FROM read_parquet(?, union_by_name=true) WHERE case_id = ?"
+                params = [self._glob(), case_id]
+            return int(con.execute(q, params).fetchone()[0])
+        finally:
+            con.close()
+
+
+def _main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="store")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p_info = sub.add_parser("info", help="row counts")
+    p_info.add_argument("root")
+    p_ev = sub.add_parser("events", help="query events")
+    p_ev.add_argument("root")
+    p_ev.add_argument("case_id")
+    p_ev.add_argument("--source", default=None)
+    p_ev.add_argument("--component_id", default=None)
+    args = ap.parse_args(argv[1:])
+
+    store = EventStore(args.root)
+    if args.cmd == "info":
+        print(f"root={store.root}  total_rows={store.count()}")
+        return 0
+    if args.cmd == "events":
+        df = store.events(args.case_id, source=args.source, component_id=args.component_id)
+        print(f"rows={df.height}")
+        with pl.Config(tbl_rows=10, fmt_str_lengths=60):
+            print(df.head(10))
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main(sys.argv))

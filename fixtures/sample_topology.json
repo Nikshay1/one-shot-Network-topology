@@ -1,0 +1,40 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": { "name": "sock-shop", "case_id": "case-001" },
+  "nodes": [
+    { "id": "loadgenerator", "service_type": "loadgen" },
+    { "id": "front-end", "service_type": "web" },
+    { "id": "catalogue", "service_type": "service" },
+    { "id": "catalogue-db", "service_type": "database" },
+    { "id": "carts", "service_type": "service" },
+    { "id": "carts-db", "service_type": "database" },
+    { "id": "orders", "service_type": "service" },
+    { "id": "orders-db", "service_type": "database" },
+    { "id": "payment", "service_type": "service" },
+    { "id": "shipping", "service_type": "service" },
+    { "id": "user", "service_type": "service" },
+    { "id": "user-db", "service_type": "database" },
+    { "id": "queue-master", "service_type": "service" },
+    { "id": "rabbitmq", "service_type": "queue" },
+    { "id": "session-db", "service_type": "database" }
+  ],
+  "links": [
+    { "source": "loadgenerator", "target": "front-end", "relation": "calls" },
+    { "source": "front-end", "target": "catalogue", "relation": "calls" },
+    { "source": "front-end", "target": "carts", "relation": "calls" },
+    { "source": "front-end", "target": "orders", "relation": "calls" },
+    { "source": "front-end", "target": "user", "relation": "calls" },
+    { "source": "front-end", "target": "session-db", "relation": "reads_from" },
+    { "source": "catalogue", "target": "catalogue-db", "relation": "reads_from" },
+    { "source": "carts", "target": "carts-db", "relation": "writes_to" },
+    { "source": "orders", "target": "orders-db", "relation": "writes_to" },
+    { "source": "orders", "target": "payment", "relation": "calls" },
+    { "source": "orders", "target": "shipping", "relation": "calls" },
+    { "source": "orders", "target": "user", "relation": "calls" },
+    { "source": "orders", "target": "carts", "relation": "calls" },
+    { "source": "user", "target": "user-db", "relation": "reads_from" },
+    { "source": "shipping", "target": "rabbitmq", "relation": "writes_to" },
+    { "source": "queue-master", "target": "rabbitmq", "relation": "reads_from" }
+  ]
+}

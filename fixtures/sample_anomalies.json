@@ -1,0 +1,68 @@
+[
+  {
+    "anomaly_id": "anom-catalogue_db-0001",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "catalogue-db",
+    "window": { "start": 1700000030.0, "end": 1700000060.0 },
+    "score": 0.92,
+    "method": "mad_zscore",
+    "evidence_event_ids": ["metric-catalogue_db-000002", "alert-catalogue_db-000001"],
+    "summary": "catalogue-db p90 latency 812ms is 9.4 MAD above baseline."
+  },
+  {
+    "anomaly_id": "anom-catalogue-0002",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "catalogue",
+    "window": { "start": 1700000025.0, "end": 1700000055.0 },
+    "score": 0.71,
+    "method": "isolation_forest",
+    "evidence_event_ids": ["metric-catalogue-000001"],
+    "summary": "catalogue cpu 0.94 cores flagged as multivariate outlier."
+  },
+  {
+    "anomaly_id": "anom-front_end-0003",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "front-end",
+    "window": { "start": 1700000034.0, "end": 1700000044.0 },
+    "score": 0.58,
+    "method": "log_freq_spike",
+    "evidence_event_ids": ["log-front_end-000003"],
+    "summary": "front-end WARN timeout template rate spiked 6x over baseline."
+  },
+  {
+    "anomaly_id": "anom-catalogue-0004",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "catalogue",
+    "window": { "start": 1700000031.0, "end": 1700000041.0 },
+    "score": 0.83,
+    "method": "log_rare_template",
+    "evidence_event_ids": ["log-catalogue-000001"],
+    "summary": "catalogue emitted rare 'connection refused' template T042."
+  },
+  {
+    "anomaly_id": "anom-front_end-0005",
+    "case_id": "case-001",
+    "source": "alert",
+    "component_id": "front-end",
+    "window": { "start": 1700000039.0, "end": 1700000069.0 },
+    "score": 0.75,
+    "method": "alert_dedup",
+    "evidence_event_ids": ["alert-front_end-000002"],
+    "summary": "front-end Elevated5xx alert firing (deduped from 12 raw alerts)."
+  },
+  {
+    "anomaly_id": "anom-catalogue_db-0006",
+    "case_id": "case-001",
+    "source": "config",
+    "component_id": "catalogue-db",
+    "window": { "start": 1700000020.0, "end": 1700000020.0 },
+    "score": 0.88,
+    "method": "config_risky_flag",
+    "evidence_event_ids": ["config-catalogue_db-000001"],
+    "summary": "catalogue-db max_connections lowered 200->50, flagged risky."
+  }
+]

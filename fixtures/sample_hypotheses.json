@@ -1,0 +1,106 @@
+[
+  {
+    "hypothesis_id": "hyp-catalogue_db-01",
+    "case_id": "case-001",
+    "rank": 1,
+    "suspect_component": "catalogue-db",
+    "statement": "A risky config push lowered catalogue-db max_connections 200->50, exhausting the pool and cascading latency/5xx upstream through catalogue to front-end.",
+    "score": 0.7,
+    "score_breakdown": {
+      "coverage": 0.3,
+      "topo_consistency": 0.12,
+      "precedence": 0.1,
+      "corroboration": 0.08,
+      "pagerank": 0.1
+    },
+    "tier": "CONFIRMED",
+    "tier_reason": "Config change precedes all symptoms; metric, log, and alert modalities corroborate on the same component.",
+    "cited_evidence_ids": [
+      "config-catalogue_db-000001",
+      "metric-catalogue_db-000002",
+      "alert-catalogue_db-000001",
+      "log-catalogue-000001"
+    ],
+    "predicted_symptoms": [
+      { "component_id": "front-end", "expectation": "elevated 5xx rate", "observed": true },
+      { "component_id": "catalogue", "expectation": "connection-refused errors to db", "observed": true },
+      { "component_id": "orders", "expectation": "increased tail latency", "observed": null }
+    ],
+    "counterfactual": { "removed": true, "anomalies_still_explained_pct": 16.7 },
+    "twin": {
+      "run": "twin-0001",
+      "similarity": 0.86,
+      "verdict": "match",
+      "missing_evidence": []
+    },
+    "challenger": {
+      "attacks": [
+        {
+          "claim": "Latency is driven by catalogue CPU, not the db pool.",
+          "contradicting_event_id": "metric-catalogue-000001",
+          "upheld": false
+        }
+      ]
+    },
+    "trigger_event_id": "config-catalogue_db-000001",
+    "fault_type_guess": "config_push"
+  },
+  {
+    "hypothesis_id": "hyp-catalogue-02",
+    "case_id": "case-001",
+    "rank": 2,
+    "suspect_component": "catalogue",
+    "statement": "catalogue CPU saturation (0.94 cores) throttled request handling and produced upstream 5xx independently of the database.",
+    "score": 0.42,
+    "score_breakdown": {
+      "coverage": 0.18,
+      "topo_consistency": 0.08,
+      "precedence": 0.05,
+      "corroboration": 0.04,
+      "pagerank": 0.07
+    },
+    "tier": "CORRELATED",
+    "tier_reason": "CPU and alert signals correlate on catalogue, but no change/trigger event establishes causation.",
+    "cited_evidence_ids": ["metric-catalogue-000001", "alert-catalogue-000003"],
+    "predicted_symptoms": [
+      { "component_id": "front-end", "expectation": "elevated 5xx rate", "observed": true },
+      { "component_id": "catalogue-db", "expectation": "no primary db anomaly", "observed": false }
+    ],
+    "counterfactual": { "removed": false, "anomalies_still_explained_pct": 66.0 },
+    "twin": {
+      "run": "twin-0002",
+      "similarity": 0.55,
+      "verdict": "partial",
+      "missing_evidence": ["config change on catalogue"]
+    },
+    "challenger": null,
+    "trigger_event_id": "metric-catalogue-000001",
+    "fault_type_guess": "cpu"
+  },
+  {
+    "hypothesis_id": "hyp-front_end-03",
+    "case_id": "case-001",
+    "rank": 3,
+    "suspect_component": "front-end",
+    "statement": "front-end is itself the fault origin for the observed 5xx surge.",
+    "score": 0.15,
+    "score_breakdown": {
+      "coverage": 0.05,
+      "topo_consistency": 0.03,
+      "precedence": 0.0,
+      "corroboration": 0.01,
+      "pagerank": 0.06
+    },
+    "tier": "MISSING_EVIDENCE",
+    "tier_reason": "front-end symptoms are downstream-consistent; no local trigger or corroborating change evidence found.",
+    "cited_evidence_ids": ["alert-front_end-000002"],
+    "predicted_symptoms": [
+      { "component_id": "front-end", "expectation": "local error trigger before upstream errors", "observed": false }
+    ],
+    "counterfactual": { "removed": false, "anomalies_still_explained_pct": 0.0 },
+    "twin": null,
+    "challenger": null,
+    "trigger_event_id": null,
+    "fault_type_guess": "unknown"
+  }
+]

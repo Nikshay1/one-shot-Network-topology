@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://verdict.dev/contracts/anomaly_event.schema.json",
+  "title": "AnomalyEvent",
+  "description": "A detected anomaly, produced by exactly one detector method.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "anomaly_id",
+    "case_id",
+    "source",
+    "component_id",
+    "window",
+    "score",
+    "method",
+    "evidence_event_ids",
+    "summary"
+  ],
+  "properties": {
+    "anomaly_id": { "type": "string", "pattern": "^anom-[A-Za-z0-9_.]+-[0-9]{4}$" },
+    "case_id": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "string",
+      "enum": ["metric", "log", "alert", "topology", "config"]
+    },
+    "component_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "number" },
+        "end": { "type": "number" }
+      }
+    },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "method": {
+      "type": "string",
+      "enum": [
+        "mad_zscore",
+        "isolation_forest",
+        "log_freq_spike",
+        "log_rare_template",
+        "alert_dedup",
+        "config_risky_flag"
+      ]
+    },
+    "evidence_event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+      }
+    },
+    "summary": { "type": "string", "maxLength": 200 }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://verdict.dev/contracts/ledger_record.schema.json",
+  "title": "LedgerRecord",
+  "description": "One immutable fact in the evidence ledger.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fact_id",
+    "case_id",
+    "kind",
+    "statement",
+    "component_ids",
+    "event_ids",
+    "modality",
+    "ts_range",
+    "confidence",
+    "hypothesis_id"
+  ],
+  "properties": {
+    "fact_id": { "type": "string", "pattern": "^fact-[A-Za-z0-9_.]+-[0-9]{4}$" },
+    "case_id": { "type": "string", "minLength": 1 },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "anomaly_observed",
+        "anomaly_absent",
+        "topology_path",
+        "topology_no_path",
+        "temporal_order",
+        "config_change_observed",
+        "counterfactual_result",
+        "twin_result",
+        "coverage_gap",
+        "hypothesis_scored"
+      ]
+    },
+    "statement": { "type": "string", "maxLength": 300 },
+    "component_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+    },
+    "event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+      }
+    },
+    "modality": {
+      "type": "string",
+      "enum": ["metric", "log", "alert", "topology", "config", "mixed", "derived"]
+    },
+    "ts_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "number" },
+        "end": { "type": "number" }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "hypothesis_id": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^hyp-[A-Za-z0-9_.]+-[0-9]{2}$" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# VERDICT ignores
+data/re2_ss/
+data/parquet/
+data/labels/
+.env
+__pycache__/
+*.py[cod]
+data/*.parquet
+
+# tooling
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store

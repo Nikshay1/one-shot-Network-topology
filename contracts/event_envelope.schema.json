@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://verdict.dev/contracts/event_envelope.schema.json",
+  "title": "EventEnvelope",
+  "description": "Normalized ingest event. payload is a oneOf over the five source-specific payloads, discriminated by `kind`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "case_id", "source", "component_id", "ts", "payload"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+    },
+    "case_id": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "string",
+      "enum": ["metric", "log", "alert", "topology", "config"]
+    },
+    "component_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "ts": { "type": "number", "description": "epoch seconds, UTC" },
+    "payload": {
+      "oneOf": [
+        { "$ref": "#/definitions/metric_payload" },
+        { "$ref": "#/definitions/log_payload" },
+        { "$ref": "#/definitions/alert_payload" },
+        { "$ref": "#/definitions/topology_payload" },
+        { "$ref": "#/definitions/config_payload" }
+      ]
+    }
+  },
+  "definitions": {
+    "metric_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "value"],
+      "properties": {
+        "kind": { "const": "metric" },
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" },
+        "unit": { "type": "string" }
+      }
+    },
+    "log_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "comment": "level is optional/nullable: RE2-SS logs.csv carries a `level` column that is empty for the overwhelming majority of container logs.",
+      "properties": {
+        "kind": { "const": "log" },
+        "level": {
+          "type": ["string", "null"],
+          "enum": ["DEBUG", "INFO", "WARN", "ERROR", "FATAL", "TRACE", null]
+        },
+        "message": { "type": "string" },
+        "template": { "type": "string" },
+        "template_id": { "type": "string" },
+        "req_path": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "alert_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "severity", "state"],
+      "properties": {
+        "kind": { "const": "alert" },
+        "name": { "type": "string", "minLength": 1 },
+        "severity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "state": { "type": "string", "enum": ["firing", "resolved"] }
+      }
+    },
+    "topology_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target_component_id", "relation"],
+      "properties": {
+        "kind": { "const": "topology" },
+        "target_component_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "relation": {
+          "type": "string",
+          "enum": ["calls", "depends_on", "routes_to", "reads_from", "writes_to"]
+        }
+      }
+    },
+    "config_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "key", "new_value"],
+      "properties": {
+        "kind": { "const": "config" },
+        "key": { "type": "string", "minLength": 1 },
+        "old_value": { "type": ["string", "number", "boolean", "null"] },
+        "new_value": { "type": ["string", "number", "boolean", "null"] },
+        "risky": { "type": "boolean" }
+      }
+    }
+  }
+}

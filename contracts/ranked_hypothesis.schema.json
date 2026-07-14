@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://verdict.dev/contracts/ranked_hypothesis.schema.json",
+  "title": "RankedHypothesis",
+  "description": "A scored root-cause hypothesis. score_breakdown values are pre-weighted contributions that MUST sum to `score` (enforced in code, not expressible in JSON Schema).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hypothesis_id",
+    "case_id",
+    "rank",
+    "suspect_component",
+    "statement",
+    "score",
+    "score_breakdown",
+    "tier",
+    "tier_reason",
+    "cited_evidence_ids",
+    "predicted_symptoms",
+    "counterfactual",
+    "twin",
+    "challenger",
+    "trigger_event_id",
+    "fault_type_guess"
+  ],
+  "properties": {
+    "hypothesis_id": { "type": "string", "pattern": "^hyp-[A-Za-z0-9_.]+-[0-9]{2}$" },
+    "case_id": { "type": "string", "minLength": 1 },
+    "rank": { "type": "integer", "minimum": 1 },
+    "suspect_component": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "statement": { "type": "string", "minLength": 1 },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "score_breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coverage", "topo_consistency", "precedence", "corroboration", "pagerank"],
+      "properties": {
+        "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "topo_consistency": { "type": "number", "minimum": 0, "maximum": 1 },
+        "precedence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "corroboration": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pagerank": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "tier": { "type": "string", "enum": ["CONFIRMED", "CORRELATED", "MISSING_EVIDENCE"] },
+    "tier_reason": { "type": "string", "minLength": 1 },
+    "cited_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+      }
+    },
+    "predicted_symptoms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component_id", "expectation", "observed"],
+        "properties": {
+          "component_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "expectation": { "type": "string", "minLength": 1 },
+          "observed": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+    "counterfactual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["removed", "anomalies_still_explained_pct"],
+      "properties": {
+        "removed": { "type": "boolean" },
+        "anomalies_still_explained_pct": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "twin": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run", "similarity", "verdict", "missing_evidence"],
+          "properties": {
+            "run": { "type": "string", "minLength": 1 },
+            "similarity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "verdict": { "type": "string", "enum": ["match", "partial", "mismatch"] },
+            "missing_evidence": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "challenger": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attacks"],
+          "properties": {
+            "attacks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["claim", "contradicting_event_id", "upheld"],
+                "properties": {
+                  "claim": { "type": "string", "minLength": 1 },
+                  "contradicting_event_id": {
+                    "type": "string",
+                    "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+                  },
+                  "upheld": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trigger_event_id": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^(metric|log|alert|topology|config)-[A-Za-z0-9_.]+-[0-9]{6}$"
+        }
+      ]
+    },
+    "fault_type_guess": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "enum": ["cpu", "mem", "disk", "delay", "loss", "socket", "config_push", "unknown"]
+        }
+      ]
+    }
+  }
+}
