@@ -210,5 +210,46 @@ except BudgetExceeded:
 print(f"STEP 5 OK: top3={top3}, {len(ranked)} candidates, file_finding validates, budget trips")
 PYEOF
 
+# --- STEP 6: counterfactual + tier rules + autopilot (scenario-2 gate) ---
+echo "== VERDICT golden: STEP 6 counterfactual + autopilot =="
+"$PY" - <<'PYEOF'
+import tempfile
+from backend.overlay.scenarios import build_variant, load_registry
+from backend.ingest.store import EventStore
+from backend.detect.runner import detect
+from backend.rank.autopilot import run as autopilot_run
+
+variant = next(v for v in load_registry()["variants"] if v["scenario_type"] == "red_herring_config")
+bundle, label = build_variant(variant, 42)
+cid = bundle.case_id
+tmp = tempfile.mkdtemp()
+store = EventStore(tmp + "/p")
+store.write_case(bundle)
+store.write_topology(cid, bundle.topology)
+detect(cid, store_root=tmp + "/p", out_dir=tmp + "/a", drain_dir=tmp + "/d")
+
+verdict = autopilot_run(cid, store_root=tmp + "/p", anomalies_dir=tmp + "/a", ledger_dir=tmp + "/l")
+hyps = verdict.hypotheses
+innocent = {c["component_id"] for c in label.injected_configs if c["innocent"]}
+
+assert hyps, "no hypotheses"
+assert label.fault_service in [h.suspect_component for h in hyps[:3]], "true fault not in top-3"
+assert hyps[0].suspect_component not in innocent, "innocent config ranked #1"
+for comp in innocent:
+    h = next((x for x in hyps if x.suspect_component == comp), None)
+    if h is None:
+        continue
+    no_path = verdict.ledger.query(component_id=comp, kind="topology_no_path")
+    cf = verdict.ledger.query(component_id=comp, kind="counterfactual_result")
+    assert no_path or (h.counterfactual.anomalies_still_explained_pct >= 70 and cf), \
+        f"{comp} lacks exonerating evidence"
+# every breakdown still sums to score after the counterfactual rescore
+for h in hyps:
+    assert abs(sum(h.score_breakdown.model_dump().values()) - h.score) < 1e-6
+
+print(f"STEP 6 OK: {cid} top1={hyps[0].suspect_component}, fault={label.fault_service} in top-3, "
+      f"innocent configs exonerated, breakdowns consistent")
+PYEOF
+
 echo "GOLDEN OK"
 # --- later steps append pipeline checks below this line ---

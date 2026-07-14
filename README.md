@@ -31,10 +31,11 @@ server, and every data shape is a frozen contract.
 | 3 | Config/alert overlay + 7-type scenario generator (25 variants) | ✅ |
 | 4 | Detection layer (metrics, logs, alerts, config) | ✅ |
 | 5 | Localize + deterministic rank floor + ledger + agent tool registry | ✅ |
-| 6+ | Counterfactual, twin, remediation, narrator, autopilot, API/UI | ⏳ |
+| 6 | Counterfactual mechanism + single tier writer + deterministic autopilot | ✅ |
+| 7+ | Twin, remediation, narrator, agents, API/UI | ⏳ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **131 tests** plus end-to-end data checks for stages 2–5.
+runs **140 tests** plus end-to-end data checks for stages 2–6.
 
 ## Repository layout
 
@@ -45,7 +46,7 @@ backend/
   overlay/              config_overlay · scenarios
   detect/               metrics · logs · alerts · config · runner
   localize/             blast (k-hop blast radius)
-  rank/                 candidates · scorer · tiers · constants
+  rank/                 candidates · scorer · tiers · counterfactual · autopilot · constants
   ledger/               ledger (append-only JSONL evidence)
   agents/               tools (typed registry) · budget
   models.py             pydantic v2 models mirroring every schema
@@ -184,6 +185,35 @@ The deterministic floor the agents stand on (and the autopilot they fall back to
 py -m backend.rank.scorer --case catalogue_cpu-1 --top 5   # true fault ranks in the top-3
 ```
 
+### 6 — Counterfactual, tier rules & the deterministic autopilot (`backend/rank`)
+
+- **counterfactual.py** — `remove_and_explain(...)`: delete a suspect, recompute
+  how many anomalies the remaining candidates still explain. High still-explained
+  ⇒ suspect redundant ⇒ `score_multiplier = 1 − 0.5·(pct/100)` discounts it. Also
+  the single-shot behind the `run_counterfactual` tool (now live) and the API toggle.
+- **tiers.py** — the ONLY tier writer: CONFIRMED needs cited-ids-resolve ∧ topology
+  path to every observed symptom ∧ full precedence ∧ twin `match` (twin is
+  `pending` until Step 7, so it caps at CORRELATED); CORRELATED names the blocker;
+  a symptom at an uninstrumented component forces MISSING_EVIDENCE and files
+  `coverage_gap` facts + instrumentation recommendations.
+- **autopilot.py** — the fixed pipeline (and the fallback Step 8 uses): floor rank
+  → counterfactual (top-5 + every risky-config target) → twin for top-1 → rescore
+  → tiers, writing every step to the ledger. `run(case_id) -> Verdict`.
+
+The **scenario-2 gate** (`tests/test_scenario2.py`) runs the full autopilot on
+every red-herring variant: the innocent config is never ranked #1, carries
+`topology_no_path` or counterfactual-unchanged evidence, and the true root cause
+stays in the top-3.
+
+> Note: on the drift-heavy *real* golden case the counterfactual can demote the
+> true fault (unrelated memory-drift anomalies stay "explained" without it), so
+> the autopilot top rank there is noisy. The deterministic floor (`scorer.rank`)
+> and the clean scenario suite both rank the true fault #1.
+
+```bash
+py -m backend.rank.autopilot --case catalogue_cpu-1 --top 5
+```
+
 ## Non-negotiable rules
 
 1. Python 3.11+, type hints everywhere, pydantic v2 for every data shape.
@@ -212,6 +242,9 @@ in-process end-to-end checks:
 - **stage 5** — the deterministic ranker puts the true fault service in the top-3;
   every `score_breakdown` sums to `score`; `file_finding` accepts valid findings
   and rejects fake event ids; budgets trip at their limits.
+- **stage 6** (scenario-2 gate) — the full autopilot on every red-herring variant:
+  the innocent config is never #1, carries `topology_no_path`/counterfactual-unchanged
+  evidence, and the true root cause stays top-3.
 
 ## Dataset
 

@@ -47,6 +47,14 @@ class BlastSubgraph:
         }
 
 
+def reachable_upstream(topology: nx.DiGraph, node: str) -> set[str]:
+    """A suspect plus everything that (transitively) calls it — the components
+    that would show its symptoms (symptoms propagate callee -> caller)."""
+    if node not in topology:
+        return {node}
+    return {node} | nx.ancestors(topology, node)
+
+
 def _khop(graph: nx.DiGraph, source: str, k: int, forward: bool) -> set[str]:
     """Nodes within k hops of `source`, following out-edges (forward) or
     in-edges (backward)."""

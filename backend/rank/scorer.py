@@ -66,6 +66,7 @@ def score_candidates(
     anomalies: list[AnomalyEvent],
     topology: nx.DiGraph,
     blast,
+    store=None,
 ) -> list[RankedHypothesis]:
     anomalous = {a.component_id for a in anomalies}
     subgraph_anoms = [a for a in anomalies if a.component_id in blast.nodes]
@@ -107,16 +108,13 @@ def score_candidates(
         breakdown = {k: round(WEIGHTS[k] * raw[k], 6) for k in WEIGHTS}
         score = round(sum(breakdown.values()), 6)
 
-        uninstr = s in topology and topology.nodes[s].get("instrumented", True) is False
-        tier, reason = tiers.assign_tier(
-            n_modalities=len(modalities),
-            has_trigger=cand.trigger_event_id is not None,
-            precedence_ok=precedence >= 0.999,
-            coverage_raw=coverage, topo_raw=topo,
-            n_suspect_anomalies=len(cand.suspect_anomalies),
-            uninstrumented=uninstr,
+        tctx = tiers.build_context(
+            s, anomalies, topology, cand.predicted_symptoms, cand.cited_evidence_ids,
+            twin_verdict="pending",  # no twin at the floor (Step 7 lifts to match)
+            resolve=(store.resolve if store is not None else None),
         )
-        scored.append((cand, breakdown, score, tier, reason, reach))
+        tres = tiers.assign_tier(tctx)  # no ledger at the floor -> no facts written
+        scored.append((cand, breakdown, score, tres.tier, tres.reason, reach))
 
     scored.sort(key=lambda t: (t[2], blast.impact.get(t[0].suspect, 0.0)), reverse=True)
 
@@ -152,11 +150,12 @@ def score_candidates(
     return result
 
 
-def rank(case_id: str, anomalies: list[AnomalyEvent], topology: nx.DiGraph) -> list[RankedHypothesis]:
+def rank(case_id: str, anomalies: list[AnomalyEvent], topology: nx.DiGraph,
+         store=None) -> list[RankedHypothesis]:
     anomalous = {a.component_id for a in anomalies}
     blast = blast_radius(topology, anomalous)
     candidates = generate_candidates(case_id, anomalies, topology, blast)
-    return score_candidates(case_id, candidates, anomalies, topology, blast)
+    return score_candidates(case_id, candidates, anomalies, topology, blast, store=store)
 
 
 def _main(argv: list[str]) -> int:

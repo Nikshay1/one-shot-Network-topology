@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.ingest.store import EventStore
 from backend.ledger.ledger import Ledger
-from backend.localize.blast import BlastSubgraph
+from backend.localize.blast import BlastSubgraph, reachable_upstream
+from backend.rank.counterfactual import remove_and_explain, score_multiplier
 from backend.models import (
     AnomalyEvent,
     EventEnvelope,
@@ -125,6 +126,15 @@ class RunCounterfactualIn(_Model):
     component: str
 
 
+class RunCounterfactualOut(_Model):
+    status: str
+    component: str
+    still_explained_pct: float
+    score_multiplier: float
+    interpretation: str
+    fact_id: str
+
+
 class StubOut(_Model):
     model_config = ConfigDict(extra="allow")
     status: str = "unavailable"
@@ -218,8 +228,22 @@ def _get_ledger(inp: GetLedgerIn, ctx: ToolContext) -> GetLedgerOut:
     ))
 
 
-def _run_counterfactual(inp: RunCounterfactualIn, ctx: ToolContext) -> StubOut:
-    return StubOut(status="unavailable")  # implemented in Step 6
+def _run_counterfactual(inp: RunCounterfactualIn, ctx: ToolContext) -> RunCounterfactualOut:
+    ranked = ctx.ranked()
+    reach_by = {h.suspect_component: reachable_upstream(ctx.topology, h.suspect_component)
+                for h in ranked}
+    reach_by.setdefault(inp.component, reachable_upstream(ctx.topology, inp.component))
+    pct = remove_and_explain(ctx.blast, ctx.anomalies, reach_by, inp.component)
+    mult = score_multiplier(pct)
+    verdict = "redundant (counterfactual-unchanged)" if pct >= 70.0 else "load-bearing"
+    interp = (f"Removing {inp.component} leaves {pct:.0f}% of anomalies explained by other "
+              f"candidates -> {verdict} (score x{mult}).")
+    hyp = next((h.hypothesis_id for h in ranked if h.suspect_component == inp.component), None)
+    fact_id = ctx.ledger.counterfactual_result(
+        statement=interp, component_ids=[inp.component], ts_range=(0.0, 0.0), hypothesis_id=hyp,
+    )
+    return RunCounterfactualOut(status="ok", component=inp.component, still_explained_pct=pct,
+                                score_multiplier=mult, interpretation=interp, fact_id=fact_id)
 
 
 def _run_twin(inp: RunTwinIn, ctx: ToolContext) -> StubOut:
@@ -281,7 +305,7 @@ _register("check_path", CheckPathIn, CheckPathOut, _check_path, 0)
 _register("get_topology_summary", GetTopologySummaryIn, GetTopologySummaryOut, _get_topology_summary, 0)
 _register("get_events", GetEventsIn, GetEventsOut, _get_events, 0)
 _register("get_ledger", GetLedgerIn, GetLedgerOut, _get_ledger, 0)
-_register("run_counterfactual", RunCounterfactualIn, StubOut, _run_counterfactual, 1)
+_register("run_counterfactual", RunCounterfactualIn, RunCounterfactualOut, _run_counterfactual, 1)
 _register("run_twin", RunTwinIn, StubOut, _run_twin, 2)
 _register("file_finding", FileFindingIn, FileFindingOut, _file_finding, 0)
 

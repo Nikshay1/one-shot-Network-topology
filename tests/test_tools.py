@@ -75,10 +75,21 @@ def test_read_tools(ctx) -> None:
     assert len(ev_out.events) == 1 and ev_out.missing == ["metric-nope-000001"]
 
 
-def test_stubs_unavailable(ctx) -> None:
+def test_run_twin_still_stubbed(ctx) -> None:
     context, _ = ctx
-    assert call_tool("run_counterfactual", {"component": "catalogue"}, context).status == "unavailable"
     assert call_tool("run_twin", {"component": "catalogue", "fault_type": "cpu"}, context).status == "unavailable"
+
+
+def test_run_counterfactual_is_live(ctx) -> None:
+    context, _ = ctx
+    out = call_tool("run_counterfactual", {"component": "catalogue"}, context)
+    assert out.status == "ok"
+    assert 0.0 <= out.still_explained_pct <= 100.0
+    assert 0.5 <= out.score_multiplier <= 1.0
+    assert out.fact_id.startswith("fact-")
+    # it auto-filed a counterfactual_result fact
+    facts = context.ledger.query(kind="counterfactual_result")
+    assert any(f.fact_id == out.fact_id for f in facts)
 
 
 # --------------------------- file_finding validation ---------------------------
