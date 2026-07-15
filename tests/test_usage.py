@@ -116,3 +116,56 @@ def test_record_turn_keeps_prose_for_offline_backends() -> None:
     record_turn(msgs, LLMDecision(tool="get_events", args={}), "get_events", "2 events")
     assert [m["role"] for m in msgs] == ["assistant", "user"]
     assert not any("tool_call_id" in m for m in msgs)
+
+
+# =========================================================================
+# spending parity with the baseline (the confounded-benchmark bug)
+# =========================================================================
+def test_investigator_may_spend_exactly_what_the_autopilot_spends() -> None:
+    """The benchmark compares the agent against the autopilot. If the agent's ceiling is
+    below what the autopilot spends, "the agent spent less" is not a result — it is the
+    cap, reported as a discovery. It was 3 against the autopilot's 7 for the whole of
+    stage 11's measurement, and `confounded_pair` (0/4) is separated only by the 5-point
+    counterfactual sweep the agent could not afford.
+    """
+    from backend.agents.investigator import autopilot_spend, default_budget
+
+    assert default_budget().max_cost_points == autopilot_spend(), \
+        "the agent cannot spend what it is benchmarked against — the comparison is rigged"
+
+
+def test_autopilot_spend_is_derived_not_restated() -> None:
+    """It must track `_CF_TOP_K` and the real tool costs, so parity survives someone
+    tuning the autopilot. A hardcoded 7 would drift and the drift would read as a
+    finding."""
+    from backend.agents.tools import REGISTRY
+    from backend.agents.investigator import autopilot_spend
+    from backend.rank.autopilot import _CF_TOP_K
+
+    expected = _CF_TOP_K * REGISTRY["run_counterfactual"].cost + REGISTRY["run_twin"].cost
+    assert autopilot_spend() == expected == 7
+
+    # and it genuinely follows the constant rather than coincidentally equalling it
+    import backend.rank.autopilot as ap
+    original = ap._CF_TOP_K
+    try:
+        ap._CF_TOP_K = 9
+        assert autopilot_spend() == 9 * 1 + 2, "autopilot_spend() ignores _CF_TOP_K"
+    finally:
+        ap._CF_TOP_K = original
+
+
+def test_the_other_caps_do_not_silently_become_the_binding_one() -> None:
+    """Raising cost points achieves nothing if max_calls binds instead: spending 7 points
+    needs >= 6 expensive calls, plus orientation calls on top."""
+    b = default_budget_or_skip()
+    min_expensive_calls = 6                      # 5 counterfactuals + 1 twin
+    assert b.max_calls > min_expensive_calls + 4, \
+        f"max_calls={b.max_calls} binds before the cost-point budget can be spent"
+    assert b.wall_clock_s >= 120, \
+        f"wall_clock_s={b.wall_clock_s} binds first: this budget is mostly LLM latency"
+
+
+def default_budget_or_skip():
+    from backend.agents.investigator import default_budget
+    return default_budget()

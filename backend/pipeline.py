@@ -23,7 +23,7 @@ from typing import Callable
 
 from backend.agents.budget import Budget
 from backend.agents.challenger import challenge
-from backend.agents.investigator import investigate_and_rescore
+from backend.agents.investigator import default_budget, investigate_and_rescore
 from backend.agents.remediation import recommend as recommend_fix
 from backend.agents.tools import ToolContext
 from backend.narrate.narrator import narrate
@@ -128,7 +128,9 @@ def run(
         note = "--fixed-pipeline: agents bypassed"
     else:
         # --- Investigator, then ALWAYS a deterministic rescore from the ledger ---
-        inv_budget = Budget(max_calls=10, max_cost_points=3, wall_clock_s=60.0)
+        # One source of truth for this budget: it must stay at spending parity with the
+        # autopilot, and a second copy here is exactly how it fell out of parity before.
+        inv_budget = default_budget()
         inv = investigate_and_rescore(
             case_id, store_root=store_root, anomalies_dir=anomalies_dir, ledger_dir=ledger_dir,
             transcripts_dir=transcripts_dir, run_id=run_id, llm=llm, budget=inv_budget, emit=emit,

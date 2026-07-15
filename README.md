@@ -61,66 +61,87 @@ runs **264 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–
 > `VERDICT_SPEND_CAP_USD` (see `backend/agents/usage.py`); exceeding it degrades to
 > the autopilot per rule 11 rather than crashing.
 >
-> The **agentic-vs-fixed headline is now measured** over the full benchmark ($1.07 of
-> live agent runs, 24 of 25 cases genuinely agentic). As measured it does **not**
-> support the claim this project was built to make — the agent is 3.2× cheaper and
-> materially *less* accurate. But **the comparison is confounded by a budget cap we
-> imposed** (agent 3 cost points, fixed 7), so it does not yet answer the question the
-> pitch asks. That is the one open decision on this project — read
-> **§Open decision** before quoting any of it.
+> The **agentic-vs-fixed headline is measured, twice** ($2.35 of live agent runs). The
+> first run was confounded by a budget cap we imposed (agent 3 points, baseline 7); the
+> budget is now at **parity, derived from the autopilot's own constants**, and it was
+> re-measured. The claim is **not supported at either budget** (agent 0.348 @3pt, 0.391
+> @parity; fixed **0.522**) — and given parity the agent spends *everything*, so "for
+> less" was never its idea. The real finding is per-scenario and it inverts:
+> `confounded_pair` 0/4 → **4/4**, `red_herring_config` **5/5** → 2/5. See
+> **§The budget experiment**.
 
-## ⚠️ Open decision — the headline comparison is confounded
+## The budget experiment — the confound was real, and fixing it broke something else
 
-**Read this before quoting any agentic-vs-fixed number, including ours.**
+The previous benchmark was confounded: the Investigator could spend **3** cost points
+while the baseline it was compared against spends **7** (5 counterfactuals × 1 + 1 twin
+× 2). "The agent spends 3.2× less" was therefore not a finding — it was the cap.
 
-The pitch is *equal-or-better accuracy for fewer expensive ops*. The measured result is
-that the agent spends **3.2× less** and scores **33% worse** (precision@1 0.348 vs
-0.522). The obvious reading — "the agent chose to spend less, and it cost it accuracy"
-— **is not what happened**, and the numbers say so:
+So we removed the cap: `default_budget()` now derives `max_cost_points` from
+`autopilot_spend()` — the autopilot's *own* constants — so both sides may spend exactly
+the same, and parity cannot silently drift if anyone tunes `_CF_TOP_K`. Then we
+re-measured live ($1.28, 25 cases, all 25 genuinely agentic).
 
-| | cost points |
-| --- | --- |
-| `run_counterfactual` | 1 each |
-| `run_twin` | 2 |
-| **what the fixed pipeline spends every case** (5 counterfactuals + 1 twin) | **7** |
-| **what the Investigator is allowed to spend, ever** (`Budget(max_cost_points=3)`) | **3** |
+**Three things came back, and only the first was expected.**
 
-The agent is **structurally forbidden from spending what it is being compared against**.
-Not one of the 25 runs exceeded 3 points, because none of them could; 7 hit the ceiling
-exactly (distribution: `{0: 2, 2: 16, 3: 7}`). So "the agent spends 3.2× less" is not a
-finding about agent behaviour — **it is a constraint we imposed, being reported as a
-discovery.**
+### 1. The agent does not choose to spend less. It spends everything.
 
-This is worst exactly where the agent looks worst. `confounded_pair` — agent **0/4** vs
-fixed **3/4** — is the scenario type whose two candidates are separated *only* by the
-exhaustive counterfactual sweep. That sweep costs 5 points. The agent has 3. **It cannot
-afford the evidence that solves the case.** Reading that 0/4 as "the agent reasoned
-badly" is reading a budget as a brain.
+Given 7 points it takes 7. Mean spend went `2.12 → 5.68` of 7, with **8 of 25 runs
+pinned at the ceiling** and the very first pilot burning all 7 (three twins + a
+counterfactual) before stopping on `budget_exhausted`. The frugality in the old numbers
+was never a decision — nothing in the metric or the prompt rewards leaving budget
+unspent, so it doesn't. **The "equal-or-better for less" pitch is dead on its own
+terms**: less was never the agent's idea.
 
-Conversely `red_herring_config` (agent **5/5** vs fixed 4/5, for 2.2 ops vs 6.4) is a
-scenario the 3-point budget comfortably fits — and there the claim holds exactly as
-pitched.
+### 2. The confound was real — `confounded_pair` went 0/4 → 4/4
 
-### The decision
+The exact prediction, confirmed. That scenario type is separated *only* by the full
+5-point counterfactual sweep. At 3 points the agent **could not afford the answer**;
+at 7 it buys it and beats the baseline outright (**4/4 vs fixed's 3/4**). Reading that
+old 0/4 as bad reasoning would have been reading a budget as a brain.
 
-**Option A — re-run with the budget unbound (recommended).** Set the Investigator's
-`max_cost_points` to 7 so both sides may spend the same, and re-measure. Then "the agent
-spent less" becomes a *choice* and the headline becomes a real result either way: if it
-still spends ~1.5 ops and matches fixed, the pitch is proven; if it spends 7 and wins,
-that's a different (weaker but honest) pitch; if it spends 7 and still loses, that is the
-most useful finding of all. Cost ~$1.10 and ~20 min (`VERDICT_SPEND_CAP_USD=3.00 make bench`).
-Note the 60s wall clock is a second, independent cap — `run_twin` alone can eat it — so
-raise both or you have merely swapped which constraint binds.
+### 3. The surprise: paying for it broke `red_herring_config`, 5/5 → 2/5
 
-**Option B — keep the cap and reframe the pitch.** State plainly that this measures *an
-agent under a deliberate 3-point budget vs an unbudgeted baseline*, and that the finding
-is per-scenario: selectivity wins where evidence is decisive (`red_herring_config`) and
-cannot buy its way out where it is ambiguous (`confounded_pair`). This is defensible and
-costs nothing, but it is answering a smaller question than the one the pitch asks.
+The scenario the agent used to *win* — the one the whole pitch is about — it now loses,
+worse than the baseline (2/5 vs fixed's 4/5).
 
-**What we did not do: quietly ship the aggregate table.** It is in §Reproduce the numbers
-with this caveat attached, because 0.348-vs-0.522 without the budget asymmetry beside it
-is a true number that tells a false story.
+| scenario type | agent @3pt | agent @7pt | fixed | Δ |
+| --- | --- | --- | --- | --- |
+| `confounded_pair` | 0/4 | **4/4** | 3/4 | **+4** |
+| `red_herring_config` | **5/5** | 2/5 | 4/5 | **−3** |
+| `alert_storm` | 0/3 | 0/3 | 1/3 | 0 |
+| `clean_cascade` | 2/5 | 2/5 | 3/5 | 0 |
+| `missing_telemetry` | 0/4 | 0/4 | 0/4 | 0 |
+| `topology_drift` | 1/2 | 1/2 | 1/2 | 0 |
+| **total** | **8/23** | **9/23** | **12/23** | **+1** |
+
+**The aggregate moved by one case. The composition changed completely.** p@1 went
+`0.348 → 0.391` against fixed's `0.522` — a number so boring it hides a total inversion
+of *which* cases the agent can solve. If you only ever look at the headline metric, this
+experiment looks like noise. It isn't.
+
+The mechanism is the interesting part: **scarcity was doing useful work.** At 3 points
+the agent was forced to triage — pick the one check that discriminates, which is exactly
+the right move on a red herring. At 7 points it can afford to look at everything, and
+the extra evidence (it now spends roughly half its budget on twins — 44 twins vs 43
+counterfactuals across the suite) apparently drags innocent-but-correlated components
+up the ranking. More evidence made it *worse* at the thing evidence-discipline is for.
+
+### Where that leaves the claim
+
+- **Not supported**, at either budget. Fixed wins the aggregate (0.522) at both 3 points
+  (0.348) and at parity (0.391).
+- **The per-scenario result is real and it is the finding**: the agent beats the baseline
+  on `confounded_pair` when it can afford to, and beats it on `red_herring_config` when
+  forced to be selective. It cannot currently do both, because the budget is a single
+  global number and the right budget is *case-dependent*.
+- **The honest next experiment** (not run — it is a design change, not a re-measurement):
+  let the agent *earn* its frugality — make unspent budget worth something, or let it
+  choose its budget per case and score it on the trade. Right now we hand it a number
+  and it spends the number.
+
+Caveats unchanged: n=23, one seed, 2–5 cases per type. The 5/5→2/5 swing is 3 cases.
+Directional, not significant — but the `confounded_pair` mechanism is understood rather
+than merely observed, which is what makes it worth reporting.
 
 ## Bring-up
 
@@ -933,7 +954,8 @@ Full output: **[`eval/results.md`](eval/results.md)**. The honest state of it:
 | mode | precision@1 | precision@3 | red-herring false-blame | median time-to-RCA |
 | ---- | ----------- | ----------- | ----------------------- | ------------------ |
 | fixed | **0.522** | **0.739** | **0.000** | 2.9s |
-| agentic (live) | 0.348 | 0.696 | **0.000** | 33.4s |
+| agentic (live, budget parity) | 0.391 | 0.696 | **0.000** | 40.2s |
+| agentic (live, old 3-point cap) | 0.348 | 0.696 | **0.000** | 33.4s |
 
 The **0.000 false-blame rate holds in both modes** and is the result this project was
 built for: across every red-herring variant, an innocent config change is never ranked
@@ -968,85 +990,60 @@ explains the anomalies" fires for the true root cause too, and demotes it.
 n=1, so this is a **pointer, not a p-value** — but it points hard, and it's the first
 thing to chase with more of the dataset extracted.
 
-### Agent efficiency — the headline, measured, and it doesn't hold
+### Agent efficiency — measured at spending parity, and the claim doesn't hold
 
 The claim this project was built to make is *equal-or-better accuracy for fewer
-expensive ops*: the fixed pipeline always spends 5 counterfactuals + 1 twin whatever
-the case looks like, while the agent picks its targets. That claim is now **measured
-against a real `OPENAI_API_KEY`** — $1.07, 25 synthetic cases, of which **24 ran
-genuinely agentic** (1 degraded to autopilot), so this is the agent, not the fallback
-wearing its label.
+expensive ops*: the baseline always spends 5 counterfactuals + 1 twin whatever the case
+looks like, while the agent picks its targets.
 
-**It is not supported.**
+It has now been measured live **twice** — once at the agent's original 3-point cap, and
+again at **spending parity** (7 points, derived from the autopilot's own constants) after
+the first run turned out to be confounded by that cap. Full story in
+**§The budget experiment**; the short version is below.
 
-| synthetic (n=23 scored) | precision@1 | precision@3 | expensive ops | wall clock |
-|---|---|---|---|---|
-| **fixed** | **0.522** | **0.739** | 5.04 | 2.9s |
-| **agentic** | 0.348 | 0.696 | **1.56** | 34.2s |
+**Not supported, at either budget.**
 
-The agent buys its 3.2× saving with a **33% relative drop in precision@1**, and is 12×
-slower in wall clock (it is waiting on a network; the autopilot is doing arithmetic).
-Cheaper and worse is not the trade the pitch describes.
-
-> **This table is confounded, and the confound is ours — see §Open decision.** The agent
-> is capped at **3 cost points**; the fixed pipeline spends **7** every case. The agent
-> never exceeded 3 in 25 runs because it *cannot*. "Spends 3.2× less" is therefore a
-> constraint we imposed, not a choice the agent made — and the comparison does not yet
-> answer the question the pitch asks.
-
-**But the aggregate hides the real result.** Broken out by scenario type, the agent
-isn't uniformly worse — it is *specifically* better exactly where the case rewards
-reasoning, and *specifically* worse where it rewards brute force:
-
-| scenario type | agentic p@1 | fixed p@1 | agent ops | fixed ops | |
+| synthetic (n=23 scored) | precision@1 | precision@3 | expensive ops | cost points | wall |
 |---|---|---|---|---|---|
-| `red_herring_config` | **1.00** (5/5) | 0.80 (4/5) | 2.2 | 6.4 | **agent wins — the claim, exactly** |
-| `topology_drift` | 0.50 (1/2) | 0.50 (1/2) | 1.5 | 4.0 | tie for 2.7× less |
-| `missing_telemetry` | 0.00 (0/4) | 0.00 (0/4) | 2.0 | 5.0 | neither can do it |
-| `clean_cascade` | 0.40 (2/5) | 0.60 (3/5) | 1.2 | 5.2 | agent loses |
-| `alert_storm` | 0.00 (0/3) | 0.33 (1/3) | 1.0 | 6.0 | agent loses |
-| `confounded_pair` | **0.00** (0/4) | **0.75** (3/4) | 1.8 | 5.0 | **agent collapses** |
+| **fixed** | **0.522** | **0.739** | 5.04 | — | 2.9s |
+| agentic @ parity (7pt) | 0.391 | 0.696 | 3.48 | 5.68 / 7 | 39.4s |
+| agentic @ old cap (3pt) | 0.348 | 0.696 | 1.56 | 2.12 / 3 | 34.2s |
 
-`red_herring_config` is the scenario the agentic pitch is about — an innocent config
-change sits next to the real fault, and *choosing* which counterfactual to spend beats
-spraying five of them: 5/5 for a third of the ops. `confounded_pair` is the mirror
-image, and it's brutal: two plausible components, and the only thing that separates
-them is the exhaustive counterfactual sweep the agent declines to run. The agent goes
-0/4 where the dumb pipeline goes 3/4.
+Three things this says, in order of how much they cost us to learn:
 
-So the honest conclusion is not "agents don't work" but **"selectivity is a bet, and it
-pays exactly where the evidence is decisive and loses where it's ambiguous."** The
-fixed pipeline's stupidity is a form of robustness.
+**The agent doesn't choose to spend less — it spends what it's given.** At parity it
+takes 5.68 of 7 points, with 8 of 25 runs pinned at the ceiling. Nothing in the metric or
+the prompt rewards leaving budget unspent, so nothing does. The "for less" half of the
+pitch was an artefact of the cap.
 
-Two caveats, and the first one is disqualifying rather than mitigating:
+**The aggregate is nearly useless here.** 0.348 → 0.391 looks like noise. Underneath, the
+set of solvable scenarios *inverted*: `confounded_pair` 0/4 → **4/4** (it can finally
+afford the 5-point sweep that separates the pair — beating fixed's 3/4), while
+`red_herring_config` **5/5** → 2/5 (it can now afford to look at everything, and does,
+and the extra twins drag innocent-but-correlated components up the ranking). Net: **+1
+case**. Composition: unrecognisable.
 
-- **The comparison is confounded and the confound is ours — see §Open decision.** The
-  agent may spend at most **3 cost points**; the fixed pipeline spends **7** on every
-  case. Across 25 runs the agent never once exceeded 3, because it cannot
-  (`{0: 2, 2: 16, 3: 7}` — 7 runs pinned at the ceiling), and it frequently ends
-  `budget_exhausted` (mean 5.96 tool calls, 2.12/3 points, against a 60s wall clock
-  that `run_twin` alone can eat). `confounded_pair` is separated *only* by the 5-point
-  counterfactual sweep, so its 0/4 is the agent unable to **afford** the answer, not
-  unable to find it. Until both sides may spend the same, "the agent spends less" is
-  something we did to it.
-- n=23, one seed. The per-type cells are 2–5 cases each. Directional, not significant.
+**Scarcity was doing work.** The 3-point agent won the red-herring scenario *because* it
+was forced to triage — pick the one check that discriminates. That is the exact behaviour
+the pitch describes, and we deleted it by being generous. The right budget is
+case-dependent; a single global number cannot buy both scenarios.
 
-The **held-out RE2-SS case (n=1)** tells the same story: agentic Avg@5 `0.00` for 1
-expensive op against fixed's `0.40` for 6 — and `fixed-no-counterfactual` beats both at
-`1.00` for 1 op. On that case the counterfactual is actively harmful, so spending less
-on it is right for a reason the agent didn't have.
+The **held-out RE2-SS case (n=1)** is unchanged in verdict: agentic Avg@5 `0.20` for 5
+expensive ops against fixed's `0.40` for 6 — and `fixed-no-counterfactual` still beats
+both at `1.00` for 1 op. On that case the counterfactual is actively harmful, which no
+amount of budget fixes.
 
-Reproduce (~$1.07, ~20 min):
+Reproduce (~$1.30, ~20 min):
 
 ```bash
 VERDICT_SPEND_CAP_USD=3.00 make bench
 ```
 
-Cost is metered per response in `backend/agents/usage.py`: **$0.041/case measured**
-(335 gpt-4o + 185 gpt-4o-mini calls, 453k prompt tokens, $1.036 total).
-`usd_per_case_measured` in `results.json` is now a measurement rather than the rate
-card it used to be. Keep the cap above the expected spend — if it trips mid-suite the
-remaining cases silently degrade to autopilot and the table becomes a mixture.
+Cost is metered per response in `backend/agents/usage.py`: **$0.051/case measured** at
+parity ($1.28 for the sweep; $0.041/case at the old cap). `usd_per_case_measured` in
+`results.json` is a measurement, not the rate card it used to be. Keep the cap above the
+expected spend — if it trips mid-suite the remaining cases silently degrade to autopilot
+and the table becomes a mixture.
 
 ### External baselines
 

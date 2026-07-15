@@ -1,6 +1,8 @@
 """The Investigator — decides WHAT GETS INVESTIGATED, never the verdict.
 
-Nine tools, Budget(10 calls, 3 cost points, 60s). Model: gpt-4o.
+Nine tools, Model: gpt-4o. The budget is `default_budget()`: spending PARITY with the
+deterministic autopilot, so that "the agent spent less" is a choice it made rather than
+a ceiling we imposed on it. See that function for why this is not a free parameter.
 
 After the loop — REGARDLESS of agent status — the deterministic scorer rescores
 over the (now richer) ledger and tiers.py assigns the tiers. If the agent did not
@@ -33,7 +35,12 @@ from backend.rank.rescore import counterfactual_components, rescore_from_ledger,
 from backend.rank.scorer import load_anomalies, rank
 
 MODEL = "gpt-4o"
-PROMPT_VERSION = "investigator-v1"
+# v2: budget raised to spending parity with the autopilot (3 -> 7 points), and the
+# prompt's claim that run_twin is "most of your budget" removed — true at 3 points,
+# false at 7. The version MUST move with the prompt's content: it is part of the
+# transcript cache key, so leaving it at v1 would make an OFFLINE replay serve a
+# recording made under a different budget while looking like a cache hit.
+PROMPT_VERSION = "investigator-v2"
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 INVESTIGATOR_TOOLS = [
@@ -69,6 +76,43 @@ def render_prompt(ctx: ToolContext, budget: Budget, candidates: list[RankedHypot
     )
 
 
+def autopilot_spend() -> int:
+    """Cost points the deterministic autopilot spends on EVERY case, computed from its
+    own constants rather than restated here — `_CF_TOP_K` counterfactuals plus one twin.
+
+    Derived, not hardcoded, because the number's whole job is to stay equal to the
+    baseline. A literal `7` would drift silently the first time anyone touched
+    `_CF_TOP_K`, and the drift would look like an agent result.
+    """
+    from backend.agents.tools import REGISTRY
+    from backend.rank.autopilot import _CF_TOP_K
+    return _CF_TOP_K * REGISTRY["run_counterfactual"].cost + REGISTRY["run_twin"].cost
+
+
+def default_budget() -> Budget:
+    """The Investigator's budget: SPENDING PARITY with the autopilot.
+
+    `max_cost_points` was 3 while the autopilot spent 7 (5 counterfactuals + 1 twin), so
+    the agent was structurally forbidden from spending what it was benchmarked against.
+    Across 25 live runs it never exceeded 3 points — it could not — and the benchmark
+    reported that ceiling as if it were a decision the agent made. Worse, the scenario it
+    failed hardest (`confounded_pair`, 0/4) is the one separated *only* by the full
+    5-point counterfactual sweep: it could not afford the evidence that solves the case.
+
+    Parity makes "the agent spent less" falsifiable. It may still choose to spend less —
+    that is the claim, and now it is a claim rather than an artefact.
+
+    The other two limits are raised to stop them silently becoming the new binding
+    constraint (the point is to measure the cost-point decision, not to rediscover a
+    different cap):
+      * `max_calls` — spending 7 points takes >= 6 expensive calls, and the agent needs
+        orientation calls on top; 10 would bind at the boundary.
+      * `wall_clock_s` — expensive ops are cheap in time (the autopilot does all 6 in
+        ~2.9s); this budget is almost entirely LLM round-trip latency, ~2-4s per call.
+    """
+    return Budget(max_calls=16, max_cost_points=autopilot_spend(), wall_clock_s=180.0)
+
+
 def investigate(
     ctx: ToolContext,
     *,
@@ -78,7 +122,7 @@ def investigate(
     emit: Callable[[str, dict], None] | None = None,
     transcripts_dir: str | Path = "data/transcripts",
 ) -> AgentResult:
-    budget = budget or Budget(max_calls=10, max_cost_points=3, wall_clock_s=60.0)
+    budget = budget or default_budget()
     candidates = ctx.ranked()
     system_prompt = render_prompt(ctx, budget, candidates)
     return run_agent(
