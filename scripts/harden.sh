@@ -12,6 +12,23 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONIOENCODING=utf-8
 
+# No key for phases 1-2, for two reasons that point the same way.
+#
+# Cost: phase 2 cold-starts 7 scenarios 3x each. With a live key that is 21 billed
+# agent runs (~$1.30) every time anyone checks the demo still works.
+#
+# Determinism: phase 2's entire assertion is that repeated cold starts agree on top-1.
+# A sampled agent is free to pick different tools on identical input, so that check
+# would be testing the weather. What must be stable across cold starts is the
+# deterministic path, and that is what this measures.
+#
+# Blank it, do NOT `unset` it. `unset` looks right and does nothing: backend/__init__
+# calls load_dotenv() on import and puts the key straight back from .env.
+# load_dotenv(override=False) will not replace a variable that is already present, and
+# an empty string IS present — so assigning empty is the only "no key" that survives
+# the import. Every gate reads bool(os.getenv(...)), for which "" is false.
+export OPENAI_API_KEY=
+
 PY=""
 for cand in python python3 py; do
   if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys; assert sys.version_info>=(3,11)" >/dev/null 2>&1; then
@@ -73,16 +90,23 @@ PYEOF
 # =====================================================================
 echo "== HARDEN 3/3: KILL-NETWORK (no key, OFFLINE=1) full demo path =="
 # =====================================================================
-env -u OPENAI_API_KEY OFFLINE=1 "$PY" - <<'PYEOF'
+env OPENAI_API_KEY= OFFLINE=1 "$PY" - <<'PYEOF'
 import json, os
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-assert not os.getenv("OPENAI_API_KEY"), "the key is still set — this proves nothing"
-assert os.getenv("OFFLINE") == "1"
-
+# Import backend FIRST, then assert. The check used to sit above these imports, where
+# it proved nothing: `backend/__init__` calls load_dotenv() on import, so a key removed
+# by the shell was silently restored a line later and this whole "kill-network" phase
+# ran with a live key while asserting it had none. The assertion is only worth anything
+# on the far side of the import that can undo it.
 from backend.api.app import create_app
 from backend.narrate import cache
+
+assert not os.getenv("OPENAI_API_KEY"), (
+    "the key is set AFTER importing backend — .env resurrected it and this phase "
+    "proves nothing. Blank the var (OPENAI_API_KEY=), do not `unset` it.")
+assert os.getenv("OFFLINE") == "1"
 
 case = cache.demo_scenarios()[0]["variant_id"]
 with TestClient(create_app()) as client:
@@ -113,10 +137,12 @@ with TestClient(create_app()) as client:
     replayed_steps = [r for r in records if r["type"] == "step"]
     if not replayed_steps:
         # Say this out loud rather than let a green tick imply replay was proven.
-        print("  NOTE: the investigator transcript holds 0 steps — no agent has ever "
-              "recorded a run here (no OPENAI_API_KEY has been used yet), so this "
-              "asserts the transcript SURFACE offline, not step replay. Rule 11 "
-              "carried the run instead. Record a live run with a key to test replay.")
+        print("  NOTE: the investigator transcript holds 0 steps — this phase runs with "
+              "no key by design, so rule 11's autopilot carried the run and there was "
+              "nothing to replay. What this asserts is the transcript SURFACE offline. "
+              "Rule 13 step replay is proven separately, against a real recording, by "
+              "tests/test_live_openai.py::test_transcript_replays_offline_with_zero_api_calls "
+              "(pytest --live).")
 
     # the REMEDIATION PANEL still renders
     r = client.get(f"/run/{rid}/remediation")

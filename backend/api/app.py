@@ -137,7 +137,7 @@ def create_app(paths: Paths | None = None,
         cited = {e for a in anomalies for e in a.evidence_event_ids}
         missing = sorted(cited - (rec.replay.streamed_ids if rec.replay else set()))
         if missing:
-            rows = st.get_by_ids(missing).sort(["ts", "event_id"]).to_dicts()
+            rows = st.get_by_ids(missing, case_id=rec.case_id).sort(["ts", "event_id"]).to_dicts()
             log.info("run %s: flushing %d cited events the stream cap had dropped",
                      rec.run_id, len(rows))
             for row in rows:

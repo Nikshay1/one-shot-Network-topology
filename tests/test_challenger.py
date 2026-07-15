@@ -98,7 +98,7 @@ def test_fake_citation_attack_is_discarded(case) -> None:
 
 def test_irrelevant_citation_attack_is_discarded(case) -> None:
     # a REAL event, but on an unrelated component and far outside the anomaly window
-    assert case["ctx"].store.get_by_ids([case["e_far"]]).height == 1
+    assert case["ctx"].store.get_by_ids([case["e_far"]], case_id=case["ctx"].case_id).height == 1
     attacks, _ = _challenge(case, json.dumps(
         [{"claim": "carts-db memory disproves it", "contradicting_event_id": case["e_far"]}]))
     assert attacks == []                       # resolves, but does not pertain

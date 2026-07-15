@@ -14,8 +14,8 @@
 
 | mode | n | precision@1 | precision@3 | red-herring false-blame | median time-to-RCA (s) |
 | --- | --- | --- | --- | --- | --- |
-| agentic | 23 | 0.522 | 0.739 | 0.000 | 7.866 |
-| fixed | 23 | 0.522 | 0.739 | 0.000 | 13.860 |
+| agentic | 23 | 0.522 | 0.739 | 0.000 | 4.272 |
+| fixed | 23 | 0.522 | 0.739 | 0.000 | 2.838 |
 
 ## Agent efficiency — agentic vs fixed
 
@@ -23,13 +23,13 @@ The fixed pipeline spends the same budget on every case (5 counterfactuals + 1 t
 
 | suite | mode | n | mean tool calls | mean cost points | mean expensive ops | mean wall-clock (s) |
 | --- | --- | --- | --- | --- | --- | --- |
-| heldout | agentic | 1 | 0.000 | 0.000 | 6.000 | 2.660 |
-| heldout | fixed | 1 | 0.000 | 0.000 | 6.000 | 2.119 |
-| heldout | fixed-no-counterfactual | 1 | 0.000 | 0.000 | 1.000 | 12.121 |
-| heldout | fixed-no-topology | 1 | 0.000 | 0.000 | 6.000 | 3.971 |
-| heldout | fixed-no-twin | 1 | 0.000 | 0.000 | 5.000 | 2.449 |
-| synthetic | agentic | 25 | 0.000 | 0.000 | 5.040 | 7.984 |
-| synthetic | fixed | 25 | 0.000 | 0.000 | 5.040 | 13.734 |
+| heldout | agentic | 1 | 0.000 | 0.000 | 6.000 | 5.531 |
+| heldout | fixed | 1 | 0.000 | 0.000 | 6.000 | 5.410 |
+| heldout | fixed-no-counterfactual | 1 | 0.000 | 0.000 | 1.000 | 7.919 |
+| heldout | fixed-no-topology | 1 | 0.000 | 0.000 | 6.000 | 2.879 |
+| heldout | fixed-no-twin | 1 | 0.000 | 0.000 | 5.000 | 1.824 |
+| synthetic | agentic | 25 | 0.000 | 0.000 | 5.040 | 4.596 |
+| synthetic | fixed | 25 | 0.000 | 0.000 | 5.040 | 2.928 |
 
 ## LLM cost per case
 

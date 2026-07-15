@@ -35,6 +35,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from backend.agents import usage
 from eval.labels import Label, synthetic_cases
 from eval.split import load_split
 
@@ -46,9 +47,10 @@ SCENARIO_SEED = 42                          # the seed data/labels was written a
 # counterfactuals + one twin for the top-1). The agent's spend is measured.
 FIXED_BUDGET_NOTE = "fixed always spends 5 counterfactuals + 1 twin"
 
-# Per-case LLM cost. gpt-4o $2.50/1M in, $10/1M out; gpt-4o-mini $0.15/$0.60.
-# Only the investigator/challenger/remediation/narrator calls count.
-_PRICES = {"gpt-4o": (2.50, 10.00), "gpt-4o-mini": (0.15, 0.60)}
+# Per-case LLM cost. The rates live in backend/agents/usage.py, which is also what
+# meters the calls — a second copy of the price table here would be a second thing
+# to get wrong.
+_PRICES = usage.PRICES
 
 
 @dataclass
@@ -62,6 +64,7 @@ class CaseResult:
     tier_of_top1: str | None = None
     top1: str | None = None
     wall_clock_s: float = 0.0
+    usd: float = 0.0                        # MEASURED LLM spend for this case
     tool_calls: int = 0
     cost_points: int = 0
     expensive_ops: int = 0
@@ -147,6 +150,7 @@ def run_case(lab: Label, suite: str, mode: str, *, fixed: bool, ablation: str | 
 
     res.unscoreable = lab.truth is None
     t0 = time.monotonic()
+    usd0 = usage.METER.usd                   # meter is process-wide; per-case cost is the delta
     try:
         ensure_case(lab.case_id)
         with ctx:
@@ -156,8 +160,10 @@ def run_case(lab: Label, suite: str, mode: str, *, fixed: bool, ablation: str | 
     except Exception as exc:                 # a case that explodes is a zero, not a crash
         res.error = f"{type(exc).__name__}: {exc}"
         res.wall_clock_s = round(time.monotonic() - t0, 3)
+        res.usd = round(usage.METER.usd - usd0, 6)
         return res
     res.wall_clock_s = round(time.monotonic() - t0, 3)
+    res.usd = round(usage.METER.usd - usd0, 6)
 
     res.ranked = [h.suspect_component for h in v.hypotheses]
     res.top1 = res.ranked[0] if res.ranked else None
@@ -231,25 +237,35 @@ def efficiency(rows: list[CaseResult]) -> dict:
 
 
 def llm_cost_note(rows: list[CaseResult]) -> dict:
-    """What the LLM actually cost. With no key the agents never call out, and rule 11
-    turns every 'agentic' run into the autopilot — so the honest number is $0.00 and
-    the honest caveat is that this is NOT an agentic measurement."""
+    """What the LLM actually cost — measured, not estimated.
+
+    `usd_per_case_measured` used to be `None` whenever a key was present: the price
+    table was printed but nothing counted a token, so the "cost per case" was a rate
+    card. It is now the mean of the per-case meter deltas.
+    """
     import os
     degraded = [r for r in rows if r.mode.startswith("agentic") and r.pipeline_mode != "agentic"]
     has_key = bool(os.getenv("OPENAI_API_KEY"))
+    billed = [r for r in rows if not r.error]
+    measured = round(statistics.fmean([r.usd for r in billed]), 6) if billed else 0.0
     return {
         "openai_api_key_present": has_key,
         "offline": os.getenv("OFFLINE", "0") == "1",
         "prices_usd_per_1m_tokens": {m: {"in": i, "out": o} for m, (i, o) in _PRICES.items()},
-        "usd_per_case_measured": 0.0 if not has_key else None,
+        "usd_per_case_measured": measured,
+        "usd_total_measured": round(sum(r.usd for r in billed), 6),
+        "spend_cap_usd": usage.METER.cap_usd,
+        "meter": usage.METER.snapshot(),
         "degraded_to_autopilot": len(degraded),
         "note": ("No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the "
                  "deterministic autopilot and cost per case is $0.00. The agentic rows "
                  "below are therefore NOT a measurement of the agent — they are the "
                  "autopilot under an agentic label. Re-run with a key for the real table."
                  if not has_key else
-                 "OPENAI_API_KEY present: per-case cost is the sum of investigator (gpt-4o), "
-                 "challenger/remediation (gpt-4o-mini) and narrator calls."),
+                 f"OPENAI_API_KEY present: ${measured:.4f}/case measured across "
+                 f"{len(billed)} runs — investigator (gpt-4o), challenger/remediation "
+                 f"(gpt-4o-mini) and narrator, metered per response in "
+                 f"backend/agents/usage.py."),
     }
 
 

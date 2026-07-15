@@ -42,22 +42,33 @@ server, and every data shape is a frozen contract.
 | 10 | Replayer + API/SSE + eval/benchmark + hardening | ✅ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **245 tests** plus end-to-end data checks for stages 2–10 (~5 min).
+runs **262 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–10
+(~5 min). It is hermetic and free: the key is blanked at the top of the script.
 
-> ### ⚠️ The LLM path has NOT been run against a real `OPENAI_API_KEY` yet
-> The agent layer (stage 8) has only ever been exercised with the **scripted** and
-> **offline-replay** backends — no real OpenAI call has been made at any point. The
-> key goes in once the project is built. With no key the pipeline reports
-> `investigator=error` and falls back to the deterministic **autopilot** (rule 11),
-> so a valid verdict is still produced today — just without agentic reasoning.
-> Unverified: `harness.OpenAIClient` tool-call parsing at temperature 0, and how a
-> real model actually spends its 3 cost points.
+> ### ✅ The LLM path HAS now been run against a real `OPENAI_API_KEY`
+> Stages 1–10 were built and verified entirely on the **scripted** and
+> **offline-replay** backends; the key went in afterwards, as planned. Turning it on
+> cost **$0.06 per case** (metered, not estimated) and immediately produced **five
+> real bugs — #7 through #11 below** — every one of them invisible to a green
+> 245-test suite, because every one of them lived in the gap between "no key" and
+> "key". The headline: the harness was not speaking OpenAI's function-calling
+> protocol at all (#8), and `.env` had never once been loaded (#7).
+>
+> **The tests still cost nothing.** `tests/conftest.py` strips the key before
+> collection, so `make golden` and `make test` are hermetic and free. The live path
+> is opt-in: `make test-live` (~$0.01). Spend is capped in code by
+> `VERDICT_SPEND_CAP_USD` (see `backend/agents/usage.py`); exceeding it degrades to
+> the autopilot per rule 11 rather than crashing.
+>
+> Still unmeasured: the **agentic-vs-fixed efficiency headline** over the full
+> benchmark, which needs ~$1.60 of live agent runs (26 cases × $0.06). See
+> §Reproduce the numbers.
 
 ## Bring-up
 
 ```bash
 make setup                 # uv venv + editable install
-make golden                # the gate: 245 tests + stage 2-10 end-to-end checks (~5 min)
+make golden                # the gate: 262 tests + stage 2-10 end-to-end checks (~5 min, free)
 
 make run                   # serve the API on 127.0.0.1:8000  (contracts/api_contract.md v1.1)
 make demo-list             # the 7 demo scenarios, one per scenario type
@@ -68,6 +79,34 @@ make warm-cache            # pre-render every demo scenario (do this BEFORE demo
 make harden                # cold-start x3 + kill-network proof + timings
 make bench                 # split -> both modes -> ablations -> eval/results.md
 ```
+
+### The API key (optional — everything above works without one)
+
+VERDICT runs end-to-end with **no key at all**: rule 11 sends every agent to the
+deterministic autopilot and you still get a valid, tiered verdict. The key buys you
+agentic reasoning, nothing else.
+
+```bash
+cp .env.example .env       # then fill in OPENAI_API_KEY
+```
+
+```ini
+OPENAI_API_KEY=sk-...
+OFFLINE=0
+VERDICT_SPEND_CAP_USD=0.50   # hard ceiling, enforced in code (rule 10)
+```
+
+`.env` is gitignored and loaded by `backend/__init__.py`. Three things are worth
+knowing before you turn it on:
+
+- **What it costs.** ~$0.06 per case, metered per response, not estimated. The cap is
+  checked *before* each request; tripping it degrades the run to the autopilot
+  (rule 11) rather than raising to the caller. `make bench` with agents is ~$1.60.
+- **Nothing routine spends it.** `make golden`, `make test` and `make harden` blank
+  the key themselves and are free by construction. Only `make test-live` (~$0.01) and
+  `make bench` (with a key present) reach the network.
+- **`unset OPENAI_API_KEY` does not work** — `.env` reloads it on the next
+  `import backend`. Blank it instead: `OPENAI_API_KEY= make bench`. See bug #9.
 
 A run in 4 lines:
 
@@ -85,11 +124,14 @@ for this case is already in flight.
 
 ## Bugs worth remembering (found and fixed)
 
-Six real bugs, all **fixed**. They're recorded because of *how* they were found:
+Eleven real bugs, all **fixed**. They're recorded because of *how* they were found:
 in every case the full test suite was green and the bug was invisible to it. Each
-one surfaced by **running the thing** — a CLI, a demo, a hardening script — not by
-testing it. Bugs 1–2 shared a root cause (the run's ledger was not fresh); 5–6 were
-found by stage 10's API and `scripts/harden.sh`.
+one surfaced by **running the thing** — a CLI, a demo, a hardening script, a real
+API key — not by testing it. Bugs 1–2 shared a root cause (the run's ledger was not
+fresh); 5–6 were found by stage 10's API and `scripts/harden.sh`; **7–11 all fell out
+of the first hour with a real `OPENAI_API_KEY`**, and 9–11 are bugs the key
+*created* — the act of making the LLM path work broke the guarantees that had only
+ever held because the LLM path was dead.
 
 ### 1. The rule-11 autopilot fallback never fired
 `investigate_and_rescore` decided "did the agent contribute?" by asking whether the
@@ -197,6 +239,146 @@ what caught it in the first place.
 > **Lesson:** a cache that can write to itself can lie to itself. And "the agent
 > completed" is not the same as "the agent did anything" — rule 11 keys off status,
 > so a hollow success is worse than an honest failure.
+
+### 7. `.env` was never loaded, so the key was never there
+
+`python-dotenv` was a declared dependency and §Bring-up told you to put
+`OPENAI_API_KEY` in `.env`. Nothing ever called `load_dotenv`. The file was inert.
+
+Every agent gate reads `os.getenv("OPENAI_API_KEY")`, so the key was simply absent,
+every agent resolved to no-LLM, and **rule 11 quietly ran the autopilot**: a green
+run, a valid verdict, a full ledger, and no agent anywhere in it. The failure mode of
+a missing key is *silence* — which is exactly why nine stages went by without anyone
+noticing that the thing being configured was not being read.
+
+Fixed in `backend/__init__.py` (the one import every CLI entry point shares, per
+rule 7), with `override=False` so a real exported variable still wins.
+
+> **Lesson:** a config file nothing reads is indistinguishable from a config file
+> that works, as long as the failure path is a graceful fallback.
+
+### 8. The harness wasn't speaking the function-calling protocol
+
+The first live run ended `status=completed` with:
+
+```
+final_text: "calling get_anomalies"
+```
+
+That string is *the harness's own placeholder*. The loop had been fabricating the
+conversation as prose:
+
+```python
+messages.append({"role": "assistant", "content": f"calling {name}"})     # WRONG
+messages.append({"role": "user",      "content": f"{name} -> {summary}"})
+```
+
+which is not OpenAI's tool protocol — there is no `tool_calls`, no `tool_call_id`, no
+`role: "tool"`. Shown a history in which assistant turns are the literal words
+"calling get_anomalies", gpt-4o did the reasonable thing and eventually produced that
+sentence as *content*. `decide()` reads a contentful reply as the final answer, so the
+agent stopped after four steps believing it had filed its report, and the report was
+an echo of our own placeholder. It also re-called `get_anomalies(catalogue)` twice
+with identical arguments — its own calls were never attributed to it, so it couldn't
+see what it had already done.
+
+Fixed by `harness.record_turn()`: the assistant turn is echoed back verbatim and
+answered by a `role:"tool"` message carrying the same `tool_call_id`. The assistant
+message is rebuilt with **only** the tool call actually executed, since every
+`tool_call` in the history needs exactly one reply or the next request 400s — and the
+error paths append too, which is where that invariant would otherwise break.
+
+The effect, same case, same seed:
+
+| | before | after |
+|---|---|---|
+| investigator steps | 4 (2 duplicates) | 6, incl. a self-chosen `run_twin` |
+| final_text | `"calling get_anomalies"` | a real report |
+| remediation agent | never ran | `completed`, 3 rehearsals |
+| API calls | 17 | 31 |
+
+> **Lesson:** the model imitates the transcript you show it. Paraphrasing its actions
+> back to it isn't a formatting choice — it's putting words in its mouth.
+
+### 9. `unset OPENAI_API_KEY` stopped meaning anything
+
+Fixing #7 silently broke every existing mechanism for taking the key *away*:
+
+```bash
+env -u OPENAI_API_KEY python -c "import backend; ..."   # key is BACK: load_dotenv put it there
+```
+
+`scripts/harden.sh`'s kill-network phase — the proof that the demo survives with no
+network — did exactly this, and its guard was:
+
+```python
+assert not os.getenv("OPENAI_API_KEY"), "the key is still set — this proves nothing"
+from backend.api.app import create_app          # <-- .env resurrects the key HERE
+```
+
+The assertion sat *above* the import that undid it, so it passed while the phase it
+guarded ran with a live key. The message "this proves nothing" was literally correct.
+
+Fixed two ways: the assert moved **below** the imports, and the scripts now blank the
+variable (`OPENAI_API_KEY=`) instead of unsetting it — `load_dotenv(override=False)`
+won't replace a variable that is *present*, and an empty string is present. Every gate
+reads `bool(os.getenv(...))`, for which `""` is false.
+
+> **Lesson:** an assertion that runs before the code that can falsify it is decoration.
+
+### 10. The test suite started spending real money
+
+Same root cause as #9, opposite direction. There was **no `tests/conftest.py`**; the
+suite was hermetic *by accident*, because the key had never been loaded into any
+process. The moment `.env` worked, a plain `pytest` began issuing billed gpt-4o
+calls — observed, not theorised: `tests/test_api.py` drove a full live investigator
+run this way. The only symptoms were a slower suite and a smaller balance.
+
+The obvious fix — an autouse fixture — is **wrong**, and quietly so: autouse fixtures
+are function-scoped, but `test_api.py` builds its `env`/`run` fixtures at **session**
+scope. Session fixtures are instantiated first, so the fixture strips the key only
+after the expensive run it was meant to prevent has already been billed.
+
+It's done in `pytest_configure` instead — before collection, before any fixture of any
+scope. And it must `import backend` *first*, then strip: popping the variable before
+that import just lets the `.env` load put it straight back.
+
+> **Lesson:** "the tests don't call the API" was never a property of the tests. It was
+> a property of a broken config file.
+
+### 11. Evidence leaked across cases
+
+`EventStore.get_by_ids` joined on `event_id` alone, and documented itself as such:
+
+```python
+def get_by_ids(self, event_ids: list[str]) -> pl.DataFrame:
+    """Return the store rows for the given event_ids (any case)."""      # WRONG
+```
+
+But `event_id` is only unique *within* a case — the generator numbers events per
+component, so `metric-catalogue-000023` exists in **all 26 cases** in `data/parquet`.
+One lookup returned 26 rows from 26 unrelated cases. The live challenger's transcript
+is what exposed it, while investigating `clean_cascade-01`:
+
+```
+get_events(['metric-catalogue-000023']) -> case_id: clean_cascade-02
+get_events(['metric-catalogue-000024']) -> case_id: clean_cascade-05
+get_events(['metric-catalogue-000025']) -> case_id: confounded_pair-03
+```
+
+Four defects, one root cause: the agent's `get_events` served foreign telemetry as
+evidence; `file_finding` — the *only* mutating tool (rule 9) — resolved citations
+against cases that weren't under investigation; the challenger's "the cited event must
+EXIST and PERTAIN" check passed on events from other cases; and the SSE catch-up flush
+streamed duplicate, foreign `event_ingested` frames.
+
+Fixed by making `case_id` a **required** parameter — the type system now refuses the
+footgun rather than documenting it. `tests/test_case_scoping.py` pins all four sites,
+and was sabotage-verified (removing the `WHERE p.case_id = ?` fails all 7).
+
+> **Lesson:** this was reachable the whole time and no test found it, because every
+> test fixture builds a store with **one case in it**. A uniqueness bug cannot
+> reproduce in a fixture with nothing to collide against.
 
 ## Repository layout
 
@@ -588,16 +770,40 @@ explains the anomalies" fires for the true root cause too, and demotes it.
 n=1, so this is a **pointer, not a p-value** — but it points hard, and it's the first
 thing to chase with more of the dataset extracted.
 
-### Agent efficiency — the headline that isn't real yet
+### Agent efficiency — the headline, and what it costs to make it real
 
 The claim this project makes is *equal-or-better AC@k for fewer expensive ops*: the
 fixed pipeline always spends 5 counterfactuals + 1 twin whatever the case looks like,
-while the agent picks its targets. The table renders, and the plumbing measures real
-`tool_calls` / `cost_points` / `expensive_ops` per case — but **with no
-`OPENAI_API_KEY` every "agentic" row is the autopilot wearing an agentic label**:
-the agents resolve to no-LLM, rule 11 fires, and `mean_tool_calls` is `0.0` on both
-sides. `results.md` says so in the LLM-cost block rather than letting the identical
-rows imply a finding. The comparison is one `OPENAI_API_KEY` away from being real.
+while the agent picks its targets.
+
+The agent path is now **live and measured** — one case, `clean_cascade-01`, with a
+real key:
+
+| | measured |
+|---|---|
+| cost per case | **$0.0608** (31 API calls: 20 × gpt-4o, 11 × gpt-4o-mini) |
+| investigator | 6 tool calls, chose `run_twin` itself, then `budget_exhausted` |
+| challenger | 4 tool calls, `budget_exhausted` |
+| remediation | `completed` — 3 rehearsals, recommended `scale_replicas` |
+| verdict | `catalogue` rank 1 (correct), tier CORRELATED |
+
+Two honest caveats. First, both reasoning agents hit **`budget_exhausted`** and rule 11
+carried the run — the 60s wall clock is tight once `run_twin` is on the critical path,
+so what the numbers above show is an agent that *starts* well, not one that finishes.
+Second, `eval/results.md` still reports the **fixed** pipeline across the suite: the
+full agentic benchmark is 26 cases × $0.06 ≈ **$1.60** of live calls, which has not
+been spent. The table in `results.md` states the measured spend and the cap, so a
+mixed run (cap trips mid-suite → remaining cases degrade to autopilot) is visible
+rather than silent.
+
+To make it real:
+
+```bash
+VERDICT_SPEND_CAP_USD=3.00 make bench      # ~$1.60 of live agent runs
+```
+
+Cost is metered per response in `backend/agents/usage.py` — `usd_per_case_measured`
+in `results.json` is a measurement, not the rate card it used to be.
 
 ### External baselines
 
@@ -658,9 +864,32 @@ in-process end-to-end checks:
   renders from real results.
 
 Beyond the gate, `make harden` proves the demo path: 7 scenarios × 3 cold starts all
-agree on top-1, and the kill-network run (no key, `OFFLINE=1`) still reaches
-`pipeline_done` with a verdict, a transcript, `remediation=ok → scale_replicas` and a
-PDF — zero API calls.
+agree on top-1 (slowest median 8.2s), and the kill-network run (no key, `OFFLINE=1`)
+still reaches `pipeline_done` with a verdict, a transcript, `remediation=ok →
+scale_replicas` and a PDF — zero API calls.
+
+### The suite is free, and that is enforced
+
+`tests/conftest.py` removes `OPENAI_API_KEY` in `pytest_configure` — before
+collection, before any fixture of any scope — and `golden.sh`/`harden.sh` blank it at
+the top. So no routine command can bill you, whatever is in your `.env`. This is
+load-bearing rather than tidy: it is the fix for bug #10, where the suite briefly
+began issuing real gpt-4o calls the moment `.env` started working, and for bug #9,
+where the scripts' `unset` had quietly stopped meaning anything.
+`test_the_suite_cannot_spend_money` guards the guard.
+
+`make test-live` (~$0.01, opt-in via `--live`) covers the four things only a real key
+can prove — and every one of them was broken the first time a key was used:
+
+- the harness speaks OpenAI's **function-calling protocol**, and the model's answer is
+  its own rather than an echo of our placeholder (bug #8);
+- calls are **metered**, and the `usd`/token counts are real;
+- the **spend cap** refuses the call *before* it is billed and degrades per rule 11;
+- **rule 13 transcript replay** actually replays — record live, then replay the same
+  `run_id` offline and get the identical tool calls for $0.00. Every transcript on
+  disk had zero steps until a key existed, so `ReplayLLM` had never once replayed a
+  real recording. That is exactly how bug #6 (the hollow `completed`) survived a whole
+  stage.
 
 ## Dataset
 

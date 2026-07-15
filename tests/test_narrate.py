@@ -119,7 +119,8 @@ def test_llm_narration_strips_when_retry_also_fails(case) -> None:
 # --------------------------- THE ADVERSARIAL TEST ---------------------------
 def test_injection_never_reaches_the_narration(case) -> None:
     """Path 1: the planted instruction is in a real log event's raw text."""
-    assert case["ctx"].store.get_by_ids([case["poisoned"]]).height == 1   # it IS in the store
+    assert case["ctx"].store.get_by_ids(
+        [case["poisoned"]], case_id=case["ctx"].case_id).height == 1      # it IS in the store
     n = narrate(case["ctx"], case["hyps"], None, run_id=CASE, transcripts_dir=case["tmp"] / "t")
     assert "dns" not in n.text.lower()
     assert "ignore previous instructions" not in n.text.lower()

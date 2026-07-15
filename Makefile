@@ -15,9 +15,16 @@ setup:
 golden:
 	bash scripts/golden.sh
 
-# Full test suite.
+# Full test suite. Hermetic and free: tests/conftest.py strips OPENAI_API_KEY before
+# collection, so nothing here can bill you however populated your .env is.
 test:
 	uv run pytest
+
+# The opt-in live tests — the ONLY ones that spend money (~$0.01: one gpt-4o-mini
+# agent, 3-call budget). They prove the things a key is required to prove: the
+# function-calling protocol, the spend meter/cap, and rule 13 transcript replay.
+test-live:
+	$(PY) -m pytest tests/test_live_openai.py --live -v
 
 # Serve the API (contracts/api_contract.md v1.1) on $(HOST):$(PORT).
 run:
@@ -37,6 +44,12 @@ warm-cache:
 	$(PY) -m backend.narrate.cache --warm-cache --all-demo-scenarios
 
 # The numbers: split, both modes, ablations, then the report.
+#
+# COSTS MONEY when OPENAI_API_KEY is set: --agentic runs a real agent per case
+# (~$0.06/case measured). VERDICT_SPEND_CAP_USD is the ceiling; if it trips mid-suite
+# the remaining agents degrade to the autopilot (rule 11) and the run is a MIXTURE —
+# eval/results.md reports the cap and the measured spend so that is visible rather
+# than silent. Blank the key (OPENAI_API_KEY= make bench) for the free, fixed-only run.
 bench:
 	$(PY) -m eval.split
 	$(PY) -m eval.run_benchmark --heldout --agentic

@@ -255,7 +255,7 @@ def _get_topology_summary(inp: GetTopologySummaryIn, ctx: ToolContext) -> GetTop
 
 
 def _get_events(inp: GetEventsIn, ctx: ToolContext) -> GetEventsOut:
-    df = ctx.store.get_by_ids(inp.event_ids)
+    df = ctx.store.get_by_ids(inp.event_ids, case_id=ctx.case_id)
     events = _rows_to_envelopes(df)
     found = {e.event_id for e in events}
     missing = [e for e in inp.event_ids if e not in found]
@@ -337,7 +337,7 @@ def _file_finding(inp: FileFindingIn, ctx: ToolContext) -> FileFindingOut:
     if bad_components:
         return FileFindingOut(ok=False, error="unknown_component",
                               detail=f"components not in topology: {bad_components}")
-    df = ctx.store.get_by_ids(inp.event_ids) if inp.event_ids else None
+    df = ctx.store.get_by_ids(inp.event_ids, case_id=ctx.case_id) if inp.event_ids else None
     found = set(df["event_id"].to_list()) if df is not None else set()
     unresolved = [e for e in inp.event_ids if e not in found]
     if unresolved:

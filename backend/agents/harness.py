@@ -22,6 +22,7 @@ from typing import Callable, Protocol
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.agents import transcript as tr
+from backend.agents import usage
 from backend.agents.budget import Budget, BudgetExceeded
 from backend.agents.tools import REGISTRY, ToolContext, call_tool
 
@@ -40,6 +41,12 @@ class LLMDecision:
     tool: str | None = None
     args: dict | None = None
     final: str | None = None
+    # The assistant turn verbatim, so history can be replayed back to the API in the
+    # real function-calling protocol (assistant.tool_calls -> role:"tool" response).
+    # None for Scripted/Replay backends, which never talk to an API and whose history
+    # only has to read sensibly.
+    raw_message: dict | None = None
+    tool_call_id: str | None = None
 
 
 class LLM(Protocol):
@@ -77,12 +84,19 @@ class ReplayLLM:
 
 
 class OpenAIClient:
-    """Real function-calling client, temperature 0, retried via tenacity."""
+    """Real function-calling client, temperature 0, retried via tenacity.
 
-    def __init__(self, model: str) -> None:
+    Every response's token usage is recorded to `usage.METER`, and the dollar cap
+    is checked BEFORE each request. Exceeding it raises SpendCap, which this loop
+    treats as any other LLM failure — so rule 11 sends the run to the autopilot
+    rather than failing it.
+    """
+
+    def __init__(self, model: str, meter: usage.Meter | None = None) -> None:
         from openai import OpenAI
         self._client = OpenAI()
         self.model = model
+        self.meter = meter if meter is not None else usage.METER
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
            reraise=True)
@@ -93,7 +107,12 @@ class OpenAIClient:
         )
 
     def decide(self, messages, tool_specs) -> LLMDecision:
+        self.meter.check()                      # before the spend, not after
         resp = self._call(messages, tool_specs)
+        u = getattr(resp, "usage", None)
+        if u is not None:
+            self.meter.record(self.model, getattr(u, "prompt_tokens", 0) or 0,
+                              getattr(u, "completion_tokens", 0) or 0)
         msg = resp.choices[0].message
         if getattr(msg, "tool_calls", None):
             tc = msg.tool_calls[0]
@@ -101,7 +120,18 @@ class OpenAIClient:
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            return LLMDecision(tool=tc.function.name, args=args)
+            # Rebuild the assistant turn with ONLY the tool call we are about to
+            # execute. The API requires every tool_call in the history to have exactly
+            # one matching `role: "tool"` reply; echoing back a parallel batch we only
+            # answer the first of would 400 on the next request.
+            raw = {"role": "assistant",
+                   "tool_calls": [{"id": tc.id, "type": "function",
+                                   "function": {"name": tc.function.name,
+                                                "arguments": tc.function.arguments or "{}"}}]}
+            if msg.content:
+                raw["content"] = msg.content
+            return LLMDecision(tool=tc.function.name, args=args,
+                               raw_message=raw, tool_call_id=tc.id)
         return LLMDecision(final=msg.content or "")
 
 
@@ -136,6 +166,35 @@ def tool_specs(names: list[str]) -> list[dict]:
             },
         })
     return specs
+
+
+def record_turn(messages: list[dict], decision: LLMDecision, name: str, summary: str) -> None:
+    """Append one (assistant -> tool result) exchange to the history.
+
+    This used to fabricate the exchange as prose:
+
+        {"role": "assistant", "content": f"calling {name}"}
+        {"role": "user",      "content": f"{name} -> {summary}"}
+
+    which is not the function-calling protocol, and it taught the model the wrong
+    lesson. Shown a history where assistant turns are the literal words "calling
+    get_anomalies", gpt-4o eventually produced that sentence as *content* instead of
+    a tool call — and `decide()` reads a contentful reply as the final answer. The
+    first live run ended `status=completed` with `final_text="calling get_anomalies"`:
+    the agent stopped after four steps believing it had written its report, and the
+    "report" was an echo of our own placeholder. Attributing the result to the model's
+    own tool_call_id is what keeps its next turn grounded in what it actually called.
+
+    Backends with no raw_message (Scripted/Replay) keep the readable prose form —
+    they never round-trip to an API, so the protocol does not apply to them.
+    """
+    if decision.raw_message is not None and decision.tool_call_id is not None:
+        messages.append(decision.raw_message)
+        messages.append({"role": "tool", "tool_call_id": decision.tool_call_id,
+                         "content": summary})
+    else:
+        messages.append({"role": "assistant", "content": f"calling {name}"})
+        messages.append({"role": "user", "content": f"{name} -> {summary}"})
 
 
 def replayable(cached_status: str | None, cached_steps: list[dict] | None,
@@ -229,7 +288,7 @@ def run_agent(
                 step = tr.TranscriptStep(time.time(), str(name), decision.args or {},
                                          f"error: tool {name!r} not available to {agent}", False)
                 steps.append(step)
-                messages.append({"role": "user", "content": step.result_summary})
+                record_turn(messages, decision, str(name), step.result_summary)
                 continue
 
             try:
@@ -241,7 +300,7 @@ def run_agent(
                 step = tr.TranscriptStep(time.time(), name, decision.args or {},
                                          f"error: {exc}", False)
                 steps.append(step)
-                messages.append({"role": "user", "content": step.result_summary})
+                record_turn(messages, decision, name, step.result_summary)
                 continue
 
             summary = tr.summarize(out.model_dump(mode="json"))
@@ -251,8 +310,7 @@ def run_agent(
                 emit("agent_step", {"agent": agent, "tool": name,
                                     "args_summary": tr.summarize(decision.args or {}),
                                     "result_summary": summary})
-            messages.append({"role": "assistant", "content": f"calling {name}"})
-            messages.append({"role": "user", "content": f"{name} -> {summary}"})
+            record_turn(messages, decision, name, summary)
         else:
             status, error = STATUS_ERROR, f"max iterations ({max_iters}) reached"
     except BudgetExceeded as exc:               # e.g. wall clock tripped mid-flight

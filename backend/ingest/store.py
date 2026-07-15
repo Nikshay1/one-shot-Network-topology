@@ -202,8 +202,22 @@ class EventStore:
         df.select(_COLUMNS).write_parquet(out_dir / "events.parquet")
         return df.height
 
-    def get_by_ids(self, event_ids: list[str]) -> pl.DataFrame:
-        """Return the store rows for the given event_ids (any case)."""
+    def get_by_ids(self, event_ids: list[str], case_id: str) -> pl.DataFrame:
+        """Return rows for the given event_ids WITHIN ONE CASE.
+
+        `case_id` is mandatory, and that is the whole point. event_id is only unique
+        *inside* a case — the generator numbers events per case, so
+        `metric-catalogue-000023` exists in all 26 cases in `data/parquet`. This
+        method used to accept ids alone and semi-join on event_id, documented as
+        "(any case)": one lookup returned 26 rows from 26 unrelated cases.
+
+        That fed four separate defects — the agent's `get_events` showed foreign
+        telemetry as evidence, `file_finding` resolved citations against cases that
+        weren't under investigation, the challenger's "cited event must EXIST" check
+        passed on events from other cases, and the SSE catch-up flush streamed
+        duplicate/foreign `event_ingested` frames. Requiring the scope at the type
+        level is what stops a fifth one being written.
+        """
         wanted = list(dict.fromkeys(event_ids))
         if not wanted or not self._has_data():
             return pl.DataFrame(schema=_SCHEMA)
@@ -212,8 +226,9 @@ class EventStore:
             con.register("wanted_ids", pl.DataFrame({"event_id": wanted}))
             return con.execute(
                 f"SELECT {', '.join(_COLUMNS)} FROM read_parquet(?, union_by_name=true) p "
-                "SEMI JOIN wanted_ids w ON p.event_id = w.event_id",
-                [self._glob()],
+                "SEMI JOIN wanted_ids w ON p.event_id = w.event_id "
+                "WHERE p.case_id = ?",
+                [self._glob(), case_id],
             ).pl()
         finally:
             con.close()

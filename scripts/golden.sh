@@ -11,6 +11,26 @@ cd "$(dirname "$0")/.."
 # Windows consoles default to cp1252 and choke on Unicode in tool output.
 export PYTHONIOENCODING=utf-8
 
+# The golden harness is a DETERMINISM gate, and it must be free to run.
+#
+# Once backend/__init__ started honouring .env, every block below inherited a live
+# OPENAI_API_KEY, and the STEP 10 block drives a full pipeline with no scripted LLM
+# — so `make golden` quietly began issuing billed gpt-4o calls and its output stopped
+# being reproducible (a sampled agent can choose different tools on identical input).
+# Both problems have the same cure: the gate does not get a key. Blocks that need an
+# LLM inject a ScriptedLLM; the rest exercise rule 11's autopilot, which is the
+# deterministic path this harness exists to pin down.
+#
+# To exercise the live agent path deliberately, use `pytest --live` or `make bench-live`.
+#
+# Blank it, do NOT `unset` it. `unset` looks right and does nothing: backend/__init__
+# calls load_dotenv() on import, which puts the key straight back from .env a
+# millisecond later. load_dotenv(override=False) will not replace a variable that is
+# already present, and an empty string is present — so assigning empty is the one form
+# of "no key" that survives the import. Every gate reads bool(os.getenv(...)), for
+# which "" is false.
+export OPENAI_API_KEY=
+
 # Pick an interpreter that actually runs (Windows ships a Store `python` shim
 # that resolves on PATH but errors when invoked). Probe each candidate.
 PY=""

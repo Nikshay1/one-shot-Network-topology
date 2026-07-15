@@ -66,7 +66,7 @@ def parse_attacks(final_text: str | None) -> list[dict]:
 
 def validate_attack(ctx: ToolContext, hypothesis: RankedHypothesis, attack: dict) -> bool:
     """Cited event must EXIST and PERTAIN (component or time overlap)."""
-    df = ctx.store.get_by_ids([attack["contradicting_event_id"]])
+    df = ctx.store.get_by_ids([attack["contradicting_event_id"]], case_id=ctx.case_id)
     if df.height == 0:
         return False                                    # citation does not resolve
     row = df.row(0, named=True)

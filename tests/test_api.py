@@ -351,13 +351,24 @@ def test_no_sse_payload_leaks_ground_truth(run) -> None:
     assert not _leaks("\n".join(run["raw"]))
 
 
+# Frames that relay RAW TELEMETRY. A stored event carrying `ts == inject_time` is a
+# coincidence of the clock, not a leak: the fault is injected *into* the telemetry, so
+# something is always timestamped at that instant. Only the value-echo check below is
+# waived for these — `test_no_sse_payload_leaks_ground_truth` still greps every one of
+# them for the field NAMES, which is the check that would actually catch rule 4 being
+# broken. `agent_step` belongs here because its result_summary is get_events/
+# get_anomalies output, i.e. telemetry verbatim; it only shows up when an agent really
+# runs, so this stayed invisible until the first run with a live OPENAI_API_KEY.
+_TELEMETRY_FRAMES = ("event_ingested", "anomaly_detected", "agent_step")
+
+
 def test_the_inject_timestamp_value_never_appears(env, run) -> None:
     """The field NAMES are one leak; the VALUE is another. A verdict that echoed the
     exact inject_time would be ground truth by another name."""
     inject = env["label"].inject_time
     for name, data in run["frames"]:
-        if name in ("event_ingested", "anomaly_detected"):
-            continue                                     # real telemetry legitimately spans it
+        if name in _TELEMETRY_FRAMES:
+            continue
         blob = json.dumps(data, default=str)
         assert f'"{inject}"' not in blob and f": {inject}" not in blob, f"{name} echoed inject_time"
 

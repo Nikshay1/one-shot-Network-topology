@@ -19,5 +19,26 @@
       "twin_match_theta": 0.8,
       "twin_partial_theta": 0.5
     }
+  },
+  {
+    "ts": 1784082014.5102434,
+    "dev": [],
+    "grid": {
+      "weights": 4,
+      "thetas": 3
+    },
+    "tuned": false,
+    "reason": "dev split is empty (only 1 RE2-SS case is materialized locally; 20% of it rounds to 0). Tuning on held-out would leak, and tuning on the synthetic suite would leak into the synthetic metrics \u2014 so nothing was tuned.",
+    "chosen": {
+      "weights": {
+        "coverage": 0.3,
+        "topo_consistency": 0.25,
+        "precedence": 0.15,
+        "corroboration": 0.15,
+        "pagerank": 0.15
+      },
+      "twin_match_theta": 0.8,
+      "twin_partial_theta": 0.5
+    }
   }
 ]
