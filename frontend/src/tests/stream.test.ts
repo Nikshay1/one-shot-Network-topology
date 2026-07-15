@@ -161,7 +161,10 @@ describe('mock api', () => {
   it('narration matches the streamed chunks', async () => {
     const { chunks } = await mockApi.narration('case-001')
     expect(chunks.length).toBeGreaterThan(0)
-    expect(chunks.map((c) => c.text).join('').startsWith('## Verdict')).toBe(true)
+    // Chunks are paragraphs, rejoined with the blank line the backend split on.
+    expect(chunks.map((c) => c.text).join('\n\n').startsWith('# Incident report')).toBe(true)
+    // No chunk carries a blank line — that is the invariant of split("\n\n").
+    expect(chunks.every((c) => !c.text.includes('\n\n'))).toBe(true)
   })
 
   it('does not hand out the fixture object itself', async () => {

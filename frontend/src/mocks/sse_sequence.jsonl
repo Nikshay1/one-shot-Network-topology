@@ -54,19 +54,11 @@
 {"event":"agent_step","data":{"agent":"remediation","tool":"rehearse_remedy","args_summary":"restart catalogue-db","result_summary":"cleared=66.7% recover=118.0s"}}
 {"event":"remediation_result","data":{"hypothesis_id":"hyp-catalogue_db-01","remedy":"restart catalogue-db","symptoms_cleared_pct":66.7,"sim_time_to_recover_s":118}}
 {"event":"agent_done","data":{"agent":"remediation","status":"completed","summary":"Recommend reverting max_connections 50->200 on catalogue-db: 83.3% of symptoms clear in ~42s simulated with no side effects."}}
-{"event":"narration_chunk","data":{"ts":0,"text":"## Verdict\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"**catalogue-db** is the root cause "}}
-{"event":"narration_chunk","data":{"ts":0,"text":"(tier: CONFIRMED, score 0.70).\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"## Timeline\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- catalogue-db max_connections changed 200 -> 50 (flagged risky). [fact-catalogue_db-0007]\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- config change on catalogue-db precedes front-end 5xx alert by 19s. [fact-catalogue_db-0006]\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- catalogue-db p90 latency anomaly (812ms) observed in window. [fact-catalogue_db-0001]\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- catalogue emitted rare connection-refused template T042. [fact-catalogue-0002]\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"## What we ruled out and why\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- Removing catalogue-db leaves only 16.7% of anomalies explained by remaining candidates. [fact-catalogue_db-0008]\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- No directed path from payment to catalogue-db; cross-fault contamination ruled out. [fact-payment-0005]\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"The twin reproduced the cascade at 0.86 similarity. [fact-catalogue_db-0009]\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"## Missing evidence & instrumentation recommendations\n\n"}}
-{"event":"narration_chunk","data":{"ts":0,"text":"- No metric stream ingested for orders-db; downstream db effects unobserved. [fact-orders-0010]\n"}}
+{"event":"narration_chunk","data":{"ts":0,"text":"# Incident report — case-001"}}
+{"event":"narration_chunk","data":{"ts":0,"text":"## Verdict\n**catalogue-db** is the root cause (tier: CONFIRMED, score 0.70)."}}
+{"event":"narration_chunk","data":{"ts":0,"text":"## Timeline\n- catalogue-db max_connections changed 200 -> 50 (flagged risky). [fact-catalogue_db-0007]\n- config change on catalogue-db precedes front-end 5xx alert by 19s. [fact-catalogue_db-0006]\n- catalogue-db p90 latency anomaly (812ms) observed in window. [fact-catalogue_db-0001]\n- catalogue emitted rare connection-refused template T042. [fact-catalogue-0002]"}}
+{"event":"narration_chunk","data":{"ts":0,"text":"## What we ruled out and why\n- Removing catalogue-db leaves only 16.7% of anomalies explained by remaining candidates. [fact-catalogue_db-0008]\n- No directed path from payment to catalogue-db; cross-fault contamination ruled out. [fact-payment-0005]"}}
+{"event":"narration_chunk","data":{"ts":0,"text":"The twin reproduced the cascade at 0.86 similarity. [fact-catalogue_db-0009]"}}
+{"event":"narration_chunk","data":{"ts":0,"text":"## Missing evidence & instrumentation recommendations\n- No metric stream ingested for orders-db; downstream db effects unobserved. [fact-orders-0010]"}}
 {"event":"causal_graph_ready","data":{"nodes":15,"edges":16,"note":"an event type this build predates — the store must ignore it without erroring"}}
 {"event":"pipeline_done","data":{"run_id":"case-001","n_hypotheses":3}}

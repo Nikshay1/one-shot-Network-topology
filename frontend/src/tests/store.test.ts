@@ -220,19 +220,40 @@ describe('tiers', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('narration', () => {
-  it('concatenates chunk deltas into one markdown string', () => {
+  it('rejoins chunks with the blank line the backend split on', () => {
+    // narrate/narrator.py:214 emits `for chunk in text.split("\n\n")`, which
+    // DROPS the separator. Plain concatenation would produce
+    // "...cascade-01## Timeline" and glue every heading to the previous
+    // paragraph; join("\n\n") is that split's exact inverse.
     const state = applySseMessages(createInitialRunState(), [
-      { event: 'narration_chunk', data: { ts: 0, text: '## Verdict\n\n' } },
-      { event: 'narration_chunk', data: { ts: 0, text: '**catalogue-db** is ' } },
-      { event: 'narration_chunk', data: { ts: 0, text: 'the root cause.' } },
+      { event: 'narration_chunk', data: { ts: 0, text: '# Incident report — case-001' } },
+      { event: 'narration_chunk', data: { ts: 0, text: '## Verdict\n**catalogue-db** is the root cause.' } },
+      { event: 'narration_chunk', data: { ts: 0, text: '## Timeline\n- a thing happened.' } },
     ])
 
-    expect(state.narration).toBe('## Verdict\n\n**catalogue-db** is the root cause.')
+    expect(state.narration).toBe(
+      '# Incident report — case-001\n\n## Verdict\n**catalogue-db** is the root cause.\n\n## Timeline\n- a thing happened.',
+    )
     expect(state.narrationChunks).toHaveLength(3)
   })
 
-  it('starts empty and stays a string with no chunks', () => {
+  it('leaves every heading at the start of a line', () => {
+    // The symptom the join fixes: a heading glued onto the previous paragraph
+    // renders as body text, and the whole report becomes a wall.
+    const state = applySseMessages(createInitialRunState(), loadMockSseMessages())
+    const headings = (state.narration.match(/## /g) ?? []).length
+    const lineStartHeadings = (state.narration.match(/(^|\n)## /g) ?? []).length
+    expect(headings).toBeGreaterThan(0)
+    expect(lineStartHeadings).toBe(headings)
+  })
+
+  it('starts empty, and one chunk needs no separator', () => {
     expect(createInitialRunState().narration).toBe('')
+    const one = applySseMessage(createInitialRunState(), {
+      event: 'narration_chunk',
+      data: { ts: 0, text: '# Only' },
+    })
+    expect(one.narration).toBe('# Only')
   })
 })
 
@@ -471,7 +492,7 @@ describe('mock sse sequence', () => {
     expect(top.score).toBe(0.7)
     expect(top.twin!.verdict).toBe('match')
 
-    expect(state.narration.startsWith('## Verdict')).toBe(true)
+    expect(state.narration.startsWith('# Incident report')).toBe(true)
     expect(state.unknownEvents).toBe(0) // dropped at parse, never reaches the store
     expect(Object.keys(state.agentSteps).sort()).toEqual([
       'challenger',

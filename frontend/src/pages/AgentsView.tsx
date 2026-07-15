@@ -47,12 +47,28 @@ function AgentPane({ runId, agent, done }: { runId: string; agent: AgentName; do
         elapsedS={transcript.elapsedS}
       />
 
-      {done && !transcript.loading && !transcript.found && liveSteps.length === 0 && (
-        <p className="rounded border border-border bg-card p-2 text-[11px] leading-snug text-muted-foreground">
-          This agent has no transcript for this run. That is a real outcome, not an error: the
-          investigator is skipped entirely when the run falls back to the deterministic autopilot
-          (rule 11), and only agents that actually ran are registered.
-        </p>
+      {/*
+        An agent that did nothing needs explaining, or the most interesting view
+        in the product reads as "broken". Three ways it legitimately happens:
+        no LLM and no cached transcript to replay; the harness cut it off; or the
+        run fell back to the deterministic autopilot. In every case rule 11 means
+        the verdict on the other tabs is still real — it was computed without it.
+      */}
+      {done && !transcript.loading && rows.length === 0 && (
+        <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <p className="text-xs text-amber-300">This agent contributed nothing to this run.</p>
+          {agentDone?.summary && (
+            <p className="font-mono text-[10px] text-muted-foreground">{agentDone.summary}</p>
+          )}
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {(agentDone?.summary ?? '').includes('no LLM available')
+              ? 'There was no API key and no cached transcript keyed to this run, so the agent could not act. The cache key is sha256(run_id + the ledger digest at agent start + prompt version), so a transcript warmed from a different run does not match.'
+              : 'The agent did not complete any tool calls.'}{' '}
+            Rule 11 then hands the run to the deterministic autopilot, which is why the verdict, the
+            counterfactuals and the twin on the other tabs still exist — they were computed without
+            this agent.
+          </p>
+        </div>
       )}
 
       <AgentTranscript
@@ -60,6 +76,7 @@ function AgentPane({ runId, agent, done }: { runId: string; agent: AgentName; do
         done={agentDone}
         finalText={transcript.result?.final_text}
         source={useHistorical ? 'transcript' : 'live'}
+        emptyNote="No tool calls."
       />
     </div>
   )

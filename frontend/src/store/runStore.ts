@@ -414,7 +414,22 @@ export function applySseMessage(state: RunState, msg: SseMessage): RunState {
         ...state,
         status: streaming(state.status),
         narrationChunks: [...state.narrationChunks, msg.data],
-        narration: state.narration + msg.data.text,
+        // Joined with a blank line, NOT concatenated.
+        //
+        // The backend chunks the report with `text.split("\n\n")`
+        // (narrate/narrator.py:214), which DROPS the separator — so plain
+        // concatenation yields "...clean_cascade-01## Timeline" and every
+        // section heading renders glued to the previous paragraph. join("\n\n")
+        // is the exact inverse of that split and reconstructs the document
+        // losslessly.
+        //
+        // This is a workaround for a backend bug: the chunk stream should
+        // reassemble into narration.text and currently cannot. If the backend
+        // starts emitting its own separators (or chunks per token), this must
+        // change — see the note in ReportView.
+        narration: state.narration
+          ? `${state.narration}\n\n${msg.data.text}`
+          : msg.data.text,
       }
 
     case 'pipeline_done':
