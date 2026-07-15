@@ -31,12 +31,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
@@ -101,9 +103,61 @@ class Paths:
 # =========================================================================
 # app
 # =========================================================================
+# Per-run fields in eval/results.json that ARE ground truth, or trivially invert to it.
+# `truth` is `fault_service` under a different name; `rank_of_truth` + `ranked` gives it
+# back by index; `false_blame` is derived from `ground_truth_innocent`.
+_GROUND_TRUTH_RUN_FIELDS = ("truth", "rank_of_truth", "false_blame")
+
+
+def redact_benchmark(doc: dict) -> dict:
+    """Strip ground truth from the benchmark payload before it leaves the API.
+
+    `/benchmark` served eval/results.json verbatim, and results.json carries the answer
+    for every case: `{"case_id": "catalogue_cpu-1", "truth": "catalogue", ...}`. That
+    contradicted the contract's own promise — "Ground-truth fields are never exposed by
+    any endpoint" — and rule 4, since this is pipeline code serving labels at runtime.
+    A frontend could join `/benchmark` against a live `/run/{id}/verdict` and display
+    the answer next to the guess.
+
+    The leak gate never saw it because the gate greps for the three field NAMES
+    (fault_service / inject_time / ground_truth_innocent) and the eval layer had renamed
+    fault_service to `truth`. Renaming a secret does not declassify it.
+
+    Aggregate metrics (AC@1, precision@k, the efficiency table) stay: they are computed
+    FROM ground truth but do not disclose it for any individual case, which is exactly
+    what a benchmark page needs.
+    """
+    out = dict(doc)
+    out["runs"] = [{k: v for k, v in r.items() if k not in _GROUND_TRUTH_RUN_FIELDS}
+                   for r in doc.get("runs", [])]
+    out["redacted"] = list(_GROUND_TRUTH_RUN_FIELDS)
+    return out
+
+
+def cors_origins() -> list[str]:
+    """Origins allowed to call this API.
+
+    A browser frontend is served from a different origin than the API (Vite on :5173,
+    uvicorn on :8000), so without this every fetch AND the EventSource SSE subscription
+    fails at the preflight with an opaque CORS error — before a single line of frontend
+    code gets to be wrong. Nothing here is authenticated and no cookies are used, so
+    the default is open; set VERDICT_CORS_ORIGINS to a comma-separated list to narrow
+    it.
+    """
+    raw = os.getenv("VERDICT_CORS_ORIGINS", "*").strip()
+    return ["*"] if raw == "*" else [o.strip() for o in raw.split(",") if o.strip()]
+
+
 def create_app(paths: Paths | None = None,
                max_stream_events: int | None = DEFAULT_MAX_STREAM_EVENTS) -> FastAPI:
     app = FastAPI(title="VERDICT", version=VERSION)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_credentials=False,        # must stay False while allow_origins can be "*"
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     P = paths or Paths()
     buses = BusRegistry()
     runs: dict[str, RunRecord] = {}
@@ -362,7 +416,7 @@ def create_app(paths: Paths | None = None,
         if not p.exists():
             return {"runs": [], "metrics": {},
                     "note": "no benchmark yet — run `python -m eval.run_benchmark --heldout`"}
-        return json.loads(p.read_text(encoding="utf-8"))
+        return redact_benchmark(json.loads(p.read_text(encoding="utf-8")))
 
     return app
 

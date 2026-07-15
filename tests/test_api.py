@@ -324,6 +324,34 @@ def _leaks(blob: str) -> list[str]:
     return [f for f in GROUND_TRUTH_FIELDS if f in blob]
 
 
+def test_cors_lets_a_browser_frontend_in(env) -> None:
+    """Without CORS a frontend on another origin (Vite :5173 -> uvicorn :8000) fails at
+    the preflight — every fetch AND the EventSource SSE subscription — before any of its
+    own code runs. This is the whole reason the API is reachable from a browser."""
+    client = env["client"]
+    origin = "http://localhost:5173"
+
+    pre = client.options("/cases", headers={
+        "Origin": origin,
+        "Access-Control-Request-Method": "GET",
+    })
+    assert pre.status_code in (200, 204), f"CORS preflight rejected: {pre.status_code}"
+    assert pre.headers.get("access-control-allow-origin") in (origin, "*")
+
+    got = client.get("/cases", headers={"Origin": origin})
+    assert got.headers.get("access-control-allow-origin") in (origin, "*")
+
+    # SSE is the one a frontend cannot polyfill around
+    stream = client.get(f"/stream/{run_id_for(client)}", headers={"Origin": origin})
+    assert stream.headers.get("access-control-allow-origin") in (origin, "*")
+
+
+def run_id_for(client) -> str:
+    """A run id that exists, without caring whether this module already made one."""
+    r = client.post(f"/case/{CASE}/run", json={"speed": 0})
+    return r.json()["run_id"] if r.status_code == 202 else CASE
+
+
 def test_the_label_actually_holds_the_secrets(env) -> None:
     """Guard the guard: if the label stopped carrying ground truth, the greps below
     would pass while proving nothing."""
@@ -342,6 +370,37 @@ def test_no_endpoint_leaks_ground_truth(env, run) -> None:
         assert not _leaks(body), f"{ep} leaked {_leaks(body)}"
     cf = client.post(f"/run/{rid}/counterfactual", json={"remove_component": "catalogue"}).text
     assert not _leaks(cf)
+
+
+def test_benchmark_does_not_serve_the_answer_key(tmp_path) -> None:
+    """`/benchmark` served eval/results.json verbatim, and results.json names the fault
+    service for every case as `truth`. The grep above never caught it: it looks for the
+    three field NAMES, and the eval layer had renamed `fault_service` to `truth`.
+    Renaming a secret does not declassify it — so this asserts on MEANING.
+    """
+    ev = tmp_path / "e"
+    ev.mkdir()
+    (ev / "results.json").write_text(json.dumps({
+        "runs": [{"case_id": "catalogue_cpu-1", "mode": "fixed", "truth": "catalogue",
+                  "rank_of_truth": 4, "false_blame": False, "top1": "session-db",
+                  "ranked": ["session-db", "user-db", "rabbitmq", "catalogue"],
+                  "expensive_ops": 6, "usd": 0.041}],
+        "metrics": {"heldout:fixed": {"AC@1": 0.0, "n": 1}},
+    }), encoding="utf-8")
+
+    with TestClient(create_app(Paths(store=tmp_path / "p", anomalies=tmp_path / "a",
+                                     ledger=tmp_path / "l", transcripts=tmp_path / "t",
+                                     reports=tmp_path / "r", eval=ev))) as c:
+        doc = c.get("/benchmark").json()
+
+    run = doc["runs"][0]
+    for f in ("truth", "rank_of_truth", "false_blame"):
+        assert f not in run, f"/benchmark disclosed {f!r}"
+    # the ANSWER itself, by any name, must not be recoverable for this case
+    assert "catalogue" not in json.dumps(run["ranked"][:1]), "sanity: top1 is not the truth here"
+    assert run["top1"] == "session-db"           # the guess survives...
+    assert run["expensive_ops"] == 6             # ...and so does everything non-secret
+    assert doc["metrics"]["heldout:fixed"]["AC@1"] == 0.0   # aggregates are NOT a leak
 
 
 def test_no_sse_payload_leaks_ground_truth(run) -> None:

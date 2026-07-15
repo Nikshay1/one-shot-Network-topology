@@ -125,14 +125,15 @@ for this case is already in flight.
 
 ## Bugs worth remembering (found and fixed)
 
-Eleven real bugs, all **fixed**. They're recorded because of *how* they were found:
+Thirteen real bugs, all **fixed**. They're recorded because of *how* they were found:
 in every case the full test suite was green and the bug was invisible to it. Each
 one surfaced by **running the thing** — a CLI, a demo, a hardening script, a real
 API key — not by testing it. Bugs 1–2 shared a root cause (the run's ledger was not
 fresh); 5–6 were found by stage 10's API and `scripts/harden.sh`; **7–11 all fell out
 of the first hour with a real `OPENAI_API_KEY`**, and 9–11 are bugs the key
 *created* — the act of making the LLM path work broke the guarantees that had only
-ever held because the LLM path was dead.
+ever held because the LLM path was dead. **12–13 were found by asking what a frontend
+would hit first**, which is a different question from what a test suite asks.
 
 ### 1. The rule-11 autopilot fallback never fired
 `investigate_and_rescore` decided "did the agent contribute?" by asking whether the
@@ -346,6 +347,46 @@ that import just lets the `.env` load put it straight back.
 
 > **Lesson:** "the tests don't call the API" was never a property of the tests. It was
 > a property of a broken config file.
+
+### 12. `GET /benchmark` served the answer key
+
+The contract's own words: *"Ground-truth fields are never exposed by any endpoint."*
+`/benchmark` returned `eval/results.json` verbatim, and every run object in it looks
+like this:
+
+```json
+{"case_id": "catalogue_cpu-1", "truth": "catalogue", "top1": "session-db", "rank_of_truth": 4}
+```
+
+The answer, for 24 cases, on an unauthenticated endpoint served by the same API as
+`/run/{id}/verdict`. A frontend could join the two and render the answer next to the
+guess — and rule 4 says ground truth is `/eval`-only, never pipeline code at runtime.
+
+The leak gate greps every endpoint for `fault_service` / `inject_time` /
+`ground_truth_innocent` and saw nothing, because the eval layer had renamed
+`fault_service` to `truth`. **Renaming a secret does not declassify it.**
+
+Fixed with `redact_benchmark()` at the boundary: `truth`, `rank_of_truth` and
+`false_blame` are stripped per run, while the aggregate metrics (AC@1, precision@k, the
+efficiency table) stay — they are computed *from* ground truth but disclose it for no
+individual case, which is exactly what a benchmark page needs. The new test asserts on
+**meaning** rather than field names, and was sabotage-verified.
+
+> **Lesson:** a leak gate that greps for names tests your vocabulary, not your secrets.
+
+### 13. No CORS — the API was unreachable from any browser
+
+There was no CORS middleware anywhere in `backend/`. The API is served on `:8000` and
+a frontend dev server lives on `:5173`, so **every** `fetch` and — fatally — the
+`EventSource` SSE subscription would fail at the preflight, before a single line of
+frontend code got the chance to be wrong. Nothing in a Python test suite can catch
+this: `TestClient` is not a browser and has no origin.
+
+Fixed with `CORSMiddleware`, open by default (nothing here is authenticated and no
+cookies are used), narrowable via `VERDICT_CORS_ORIGINS`. `test_cors_lets_a_browser_frontend_in`
+sends a real preflight and checks the SSE route too.
+
+> **Lesson:** found by asking "what would the frontend hit first?" — not by any test.
 
 ### 11. Evidence leaked across cases
 
