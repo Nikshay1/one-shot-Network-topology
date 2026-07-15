@@ -1,0 +1,62 @@
+{
+  "status": "ok",
+  "case_id": "case-001",
+  "hypothesis_id": "hyp-catalogue_db-01",
+  "component": "catalogue-db",
+  "fault_type": "config_push",
+  "recommended": {
+    "remedy": "revert max_connections 50->200 on catalogue-db",
+    "symptoms_cleared_pct": 83.3,
+    "sim_time_to_recover_s": 42.0,
+    "residual_symptoms": ["orders tail latency remains 1.2x baseline"],
+    "side_effects": [],
+    "fact_id": "fact-catalogue_db-0011"
+  },
+  "alternatives": [
+    {
+      "remedy": "restart catalogue-db",
+      "symptoms_cleared_pct": 66.7,
+      "sim_time_to_recover_s": 118.0,
+      "residual_symptoms": ["front-end 5xx persists during restart window"],
+      "side_effects": ["drops in-flight connections for all catalogue readers"],
+      "fact_id": "fact-catalogue_db-0012"
+    },
+    {
+      "remedy": "scale catalogue replicas 1->3",
+      "symptoms_cleared_pct": 33.3,
+      "sim_time_to_recover_s": 75.0,
+      "residual_symptoms": ["catalogue-db pool still exhausted", "latency unchanged at db"],
+      "side_effects": ["increases connection pressure on catalogue-db"],
+      "fact_id": "fact-catalogue_db-0013"
+    }
+  ],
+  "rehearsals": [
+    {
+      "remedy": "revert max_connections 50->200 on catalogue-db",
+      "symptoms_cleared_pct": 83.3,
+      "sim_time_to_recover_s": 42.0,
+      "residual_symptoms": ["orders tail latency remains 1.2x baseline"],
+      "side_effects": [],
+      "fact_id": "fact-catalogue_db-0011"
+    },
+    {
+      "remedy": "restart catalogue-db",
+      "symptoms_cleared_pct": 66.7,
+      "sim_time_to_recover_s": 118.0,
+      "residual_symptoms": ["front-end 5xx persists during restart window"],
+      "side_effects": ["drops in-flight connections for all catalogue readers"],
+      "fact_id": "fact-catalogue_db-0012"
+    },
+    {
+      "remedy": "scale catalogue replicas 1->3",
+      "symptoms_cleared_pct": 33.3,
+      "sim_time_to_recover_s": 75.0,
+      "residual_symptoms": ["catalogue-db pool still exhausted", "latency unchanged at db"],
+      "side_effects": ["increases connection pressure on catalogue-db"],
+      "fact_id": "fact-catalogue_db-0013"
+    }
+  ],
+  "caveat": "",
+  "agent_status": "completed",
+  "transcript_path": "data/transcripts/remediation-00bf1ca20012b35d.jsonl"
+}

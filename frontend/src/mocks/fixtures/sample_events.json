@@ -1,0 +1,181 @@
+[
+  {
+    "event_id": "metric-catalogue-000001",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "catalogue",
+    "ts": 1700000030.0,
+    "payload": { "kind": "metric", "name": "cpu", "value": 0.94, "unit": "cores" }
+  },
+  {
+    "event_id": "metric-catalogue_db-000002",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "catalogue-db",
+    "ts": 1700000032.0,
+    "payload": { "kind": "metric", "name": "latency-90", "value": 812.0, "unit": "ms" }
+  },
+  {
+    "event_id": "metric-front_end-000003",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "front-end",
+    "ts": 1700000035.0,
+    "payload": { "kind": "metric", "name": "error", "value": 42.0, "unit": "count" }
+  },
+  {
+    "event_id": "metric-carts-000004",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "carts",
+    "ts": 1700000037.0,
+    "payload": { "kind": "metric", "name": "mem", "value": 251412480.0, "unit": "bytes" }
+  },
+  {
+    "event_id": "metric-orders-000005",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "orders",
+    "ts": 1700000040.0,
+    "payload": { "kind": "metric", "name": "latency-90", "value": 640.0, "unit": "ms" }
+  },
+  {
+    "event_id": "metric-payment-000006",
+    "case_id": "case-001",
+    "source": "metric",
+    "component_id": "payment",
+    "ts": 1700000042.0,
+    "payload": { "kind": "metric", "name": "cpu", "value": 0.075, "unit": "cores" }
+  },
+  {
+    "event_id": "log-catalogue-000001",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "catalogue",
+    "ts": 1700000033.0,
+    "payload": {
+      "kind": "log",
+      "message": "ts=2024-01-21T08:04:18Z caller=logging.go:40 method=Get err=connection refused to catalogue-db:3306 took=5.2ms",
+      "template_id": "T042"
+    }
+  },
+  {
+    "event_id": "log-catalogue_db-000002",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "catalogue-db",
+    "ts": 1700000031.0,
+    "payload": {
+      "kind": "log",
+      "message": "too many connections",
+      "template": "too many connections",
+      "template_id": "T017"
+    }
+  },
+  {
+    "event_id": "log-front_end-000003",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "front-end",
+    "ts": 1700000036.0,
+    "payload": {
+      "kind": "log",
+      "message": "Order response: {\"statusCode\":503,\"body\":\"upstream connect error: remote connection failure\"}",
+      "template_id": "T003",
+      "req_path": "/orders"
+    }
+  },
+  {
+    "event_id": "log-orders-000004",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "orders",
+    "ts": 1700000041.0,
+    "payload": {
+      "kind": "log",
+      "level": "INFO",
+      "message": "2024-01-21T08:04:20Z INFO [orders,trace,span] payment declined, retrying",
+      "template_id": "T021"
+    }
+  },
+  {
+    "event_id": "log-carts-000005",
+    "case_id": "case-001",
+    "source": "log",
+    "component_id": "carts",
+    "ts": 1700000038.0,
+    "payload": { "kind": "log", "message": "cart persisted", "template_id": "T001" }
+  },
+  {
+    "event_id": "alert-catalogue_db-000001",
+    "case_id": "case-001",
+    "source": "alert",
+    "component_id": "catalogue-db",
+    "ts": 1700000034.0,
+    "payload": { "kind": "alert", "name": "HighDbLatency", "severity": 0.9, "state": "firing" }
+  },
+  {
+    "event_id": "alert-front_end-000002",
+    "case_id": "case-001",
+    "source": "alert",
+    "component_id": "front-end",
+    "ts": 1700000039.0,
+    "payload": { "kind": "alert", "name": "Elevated5xx", "severity": 0.75, "state": "firing" }
+  },
+  {
+    "event_id": "alert-catalogue-000003",
+    "case_id": "case-001",
+    "source": "alert",
+    "component_id": "catalogue",
+    "ts": 1700000035.0,
+    "payload": { "kind": "alert", "name": "CPUThrottling", "severity": 0.6, "state": "firing" }
+  },
+  {
+    "event_id": "topology-front_end-000001",
+    "case_id": "case-001",
+    "source": "topology",
+    "component_id": "front-end",
+    "ts": 1700000000.0,
+    "payload": { "kind": "topology", "target_component_id": "catalogue", "relation": "calls" }
+  },
+  {
+    "event_id": "topology-front_end-000002",
+    "case_id": "case-001",
+    "source": "topology",
+    "component_id": "front-end",
+    "ts": 1700000000.0,
+    "payload": { "kind": "topology", "target_component_id": "carts", "relation": "calls" }
+  },
+  {
+    "event_id": "topology-catalogue-000003",
+    "case_id": "case-001",
+    "source": "topology",
+    "component_id": "catalogue",
+    "ts": 1700000000.0,
+    "payload": { "kind": "topology", "target_component_id": "catalogue-db", "relation": "reads_from" }
+  },
+  {
+    "event_id": "topology-orders-000004",
+    "case_id": "case-001",
+    "source": "topology",
+    "component_id": "orders",
+    "ts": 1700000000.0,
+    "payload": { "kind": "topology", "target_component_id": "payment", "relation": "calls" }
+  },
+  {
+    "event_id": "config-catalogue_db-000001",
+    "case_id": "case-001",
+    "source": "config",
+    "component_id": "catalogue-db",
+    "ts": 1700000020.0,
+    "payload": { "kind": "config", "key": "max_connections", "old_value": 200, "new_value": 50, "risky": true }
+  },
+  {
+    "event_id": "config-catalogue-000002",
+    "case_id": "case-001",
+    "source": "config",
+    "component_id": "catalogue",
+    "ts": 1700000010.0,
+    "payload": { "kind": "config", "key": "gc.mode", "old_value": "off", "new_value": "aggressive", "risky": false }
+  }
+]

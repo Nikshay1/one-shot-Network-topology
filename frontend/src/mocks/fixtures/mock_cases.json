@@ -1,0 +1,164 @@
+[
+  {
+    "case_id": "clean_cascade-01",
+    "title": "clean cascade-01",
+    "n_components": 15,
+    "n_events": 1200
+  },
+  {
+    "case_id": "clean_cascade-02",
+    "title": "clean cascade-02",
+    "n_components": 15,
+    "n_events": 1337
+  },
+  {
+    "case_id": "clean_cascade-03",
+    "title": "clean cascade-03",
+    "n_components": 15,
+    "n_events": 1474
+  },
+  {
+    "case_id": "clean_cascade-04",
+    "title": "clean cascade-04",
+    "n_components": 15,
+    "n_events": 1611
+  },
+  {
+    "case_id": "clean_cascade-05",
+    "title": "clean cascade-05",
+    "n_components": 15,
+    "n_events": 1748
+  },
+  {
+    "case_id": "red_herring_config-01",
+    "title": "red herring config-01",
+    "n_components": 15,
+    "n_events": 1885
+  },
+  {
+    "case_id": "red_herring_config-02",
+    "title": "red herring config-02",
+    "n_components": 15,
+    "n_events": 2022
+  },
+  {
+    "case_id": "red_herring_config-03",
+    "title": "red herring config-03",
+    "n_components": 15,
+    "n_events": 1259
+  },
+  {
+    "case_id": "red_herring_config-04",
+    "title": "red herring config-04",
+    "n_components": 15,
+    "n_events": 1396
+  },
+  {
+    "case_id": "red_herring_config-05",
+    "title": "red herring config-05",
+    "n_components": 15,
+    "n_events": 1533
+  },
+  {
+    "case_id": "alert_storm-01",
+    "title": "alert storm-01",
+    "n_components": 15,
+    "n_events": 1670
+  },
+  {
+    "case_id": "alert_storm-02",
+    "title": "alert storm-02",
+    "n_components": 15,
+    "n_events": 1807
+  },
+  {
+    "case_id": "alert_storm-03",
+    "title": "alert storm-03",
+    "n_components": 15,
+    "n_events": 1944
+  },
+  {
+    "case_id": "confounded_pair-01",
+    "title": "confounded pair-01",
+    "n_components": 15,
+    "n_events": 2081
+  },
+  {
+    "case_id": "confounded_pair-02",
+    "title": "confounded pair-02",
+    "n_components": 15,
+    "n_events": 1318
+  },
+  {
+    "case_id": "confounded_pair-03",
+    "title": "confounded pair-03",
+    "n_components": 15,
+    "n_events": 1455
+  },
+  {
+    "case_id": "confounded_pair-04",
+    "title": "confounded pair-04",
+    "n_components": 15,
+    "n_events": 1592
+  },
+  {
+    "case_id": "missing_telemetry-01",
+    "title": "missing telemetry-01",
+    "n_components": 15,
+    "n_events": 1729
+  },
+  {
+    "case_id": "missing_telemetry-02",
+    "title": "missing telemetry-02",
+    "n_components": 15,
+    "n_events": 1866
+  },
+  {
+    "case_id": "missing_telemetry-03",
+    "title": "missing telemetry-03",
+    "n_components": 15,
+    "n_events": 2003
+  },
+  {
+    "case_id": "missing_telemetry-04",
+    "title": "missing telemetry-04",
+    "n_components": 15,
+    "n_events": 1240
+  },
+  {
+    "case_id": "topology_drift-01",
+    "title": "topology drift-01",
+    "n_components": 15,
+    "n_events": 1377
+  },
+  {
+    "case_id": "topology_drift-02",
+    "title": "topology drift-02",
+    "n_components": 15,
+    "n_events": 1514
+  },
+  {
+    "case_id": "ambiguous-01",
+    "title": "ambiguous-01",
+    "n_components": 15,
+    "n_events": 1651
+  },
+  {
+    "case_id": "ambiguous-02",
+    "title": "ambiguous-02",
+    "n_components": 15,
+    "n_events": 1788
+  },
+  {
+    "case_id": "catalogue_cpu-1",
+    "title": "catalogue cpu-1",
+    "n_components": 15,
+    "n_events": 4225
+  },
+  {
+    "case_id": "orders_mem-2",
+    "title": "orders mem-2",
+    "n_components": 15,
+    "n_events": 4226
+  }
+]

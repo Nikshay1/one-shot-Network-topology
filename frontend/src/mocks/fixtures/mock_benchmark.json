@@ -1,0 +1,143 @@
+{
+  "generated_at": 1700000600.0,
+  "runs": [
+    {
+      "case_id": "clean_cascade-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": ["catalogue-db", "catalogue", "front-end", "orders", "carts"],
+      "tier_of_top1": "CONFIRMED",
+      "top1": "catalogue-db",
+      "wall_clock_s": 34.2,
+      "usd": 0.061,
+      "tool_calls": 31,
+      "cost_points": 7,
+      "expensive_ops": 3,
+      "expensive_detail": ["counterfactual:catalogue-db", "twin:hyp-catalogue_db-01"],
+      "pipeline_mode": "agentic",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-03",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": ["carts-db", "carts", "front-end"],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 36.8,
+      "usd": 0.058,
+      "tool_calls": 28,
+      "cost_points": 7,
+      "expensive_ops": 2,
+      "expensive_detail": ["counterfactual:carts-db"],
+      "pipeline_mode": "agentic",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-02",
+      "suite": "synthetic",
+      "mode": "autopilot",
+      "ranked": ["orders-db", "orders"],
+      "tier_of_top1": "MISSING_EVIDENCE",
+      "top1": "orders-db",
+      "wall_clock_s": 21.4,
+      "usd": 0.0,
+      "tool_calls": 0,
+      "cost_points": 7,
+      "expensive_ops": 6,
+      "expensive_detail": ["autopilot:5xcounterfactual", "autopilot:twin"],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    }
+  ],
+  "metrics": {
+    "synthetic:agentic": {
+      "n": 24,
+      "excluded_unscoreable": 0,
+      "errors": 0,
+      "precision@1": 0.75,
+      "precision@3": 0.9167,
+      "red_herring_false_blame_rate": 0.4,
+      "red_herring_n": 5,
+      "median_time_to_rca_s": 34.1,
+      "efficiency": {
+        "n": 24,
+        "mean_tool_calls": 29.4,
+        "mean_cost_points": 6.8,
+        "mean_expensive_ops": 2.6,
+        "mean_wall_clock_s": 34.9,
+        "total_wall_clock_s": 837.6
+      },
+      "llm_cost": {
+        "openai_api_key_present": false,
+        "offline": true,
+        "prices_usd_per_1m_tokens": { "gpt-4o-mini": { "prompt": 0.15, "completion": 0.6 } },
+        "usd_per_case_measured": 0.0,
+        "usd_total_measured": 0.0,
+        "spend_cap_usd": 5.0,
+        "meter": {
+          "usd": 0.0,
+          "cap_usd": 5.0,
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "by_model": {}
+        },
+        "degraded_to_autopilot": false,
+        "note": "mock fixture — no live calls were made"
+      },
+      "fixed_budget_note": "max_cost_points is derived from autopilot_spend(); both sides may spend exactly the same."
+    },
+    "synthetic:autopilot": {
+      "n": 24,
+      "excluded_unscoreable": 0,
+      "errors": 0,
+      "precision@1": 0.7083,
+      "precision@3": 0.875,
+      "red_herring_false_blame_rate": 0.0,
+      "red_herring_n": 5,
+      "median_time_to_rca_s": 21.9,
+      "efficiency": {
+        "n": 24,
+        "mean_tool_calls": 0.0,
+        "mean_cost_points": 7.0,
+        "mean_expensive_ops": 6.0,
+        "mean_wall_clock_s": 22.3,
+        "total_wall_clock_s": 535.2
+      },
+      "fixed_budget_note": "max_cost_points is derived from autopilot_spend(); both sides may spend exactly the same."
+    }
+  },
+  "baselines": {
+    "generated_at": 1700000600.0,
+    "results": [
+      {
+        "name": "random",
+        "skipped": false,
+        "n": 24,
+        "AC@1": 0.0833,
+        "AC@3": 0.25,
+        "Avg@5": 0.1667,
+        "notes": "uniform over components"
+      },
+      {
+        "name": "pagerank-only",
+        "skipped": false,
+        "n": 24,
+        "AC@1": 0.2917,
+        "AC@3": 0.5833,
+        "Avg@5": 0.4083,
+        "notes": "topology prior, no evidence"
+      }
+    ],
+    "skipped": false,
+    "reason": ""
+  },
+  "redacted": ["truth", "rank_of_truth", "false_blame"]
+}
