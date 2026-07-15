@@ -60,9 +60,10 @@ runs **262 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–
 > `VERDICT_SPEND_CAP_USD` (see `backend/agents/usage.py`); exceeding it degrades to
 > the autopilot per rule 11 rather than crashing.
 >
-> Still unmeasured: the **agentic-vs-fixed efficiency headline** over the full
-> benchmark, which needs ~$1.60 of live agent runs (26 cases × $0.06). See
-> §Reproduce the numbers.
+> The **agentic-vs-fixed headline is now measured** over the full benchmark ($1.07 of
+> live agent runs, 24 of 25 cases genuinely agentic). It does **not** support the
+> claim this project was built to make — the agent is 3.2× cheaper and materially
+> *less* accurate. See §Reproduce the numbers, which now leads with the refutation.
 
 ## Bring-up
 
@@ -742,14 +743,22 @@ Full output: **[`eval/results.md`](eval/results.md)**. The honest state of it:
 
 | mode | precision@1 | precision@3 | red-herring false-blame | median time-to-RCA |
 | ---- | ----------- | ----------- | ----------------------- | ------------------ |
-| fixed | 0.522 | 0.739 | **0.000** | 13.9s |
-| agentic | 0.522 | 0.739 | **0.000** | 7.9s |
+| fixed | **0.522** | **0.739** | **0.000** | 2.9s |
+| agentic (live) | 0.348 | 0.696 | **0.000** | 33.4s |
 
-The **0.000 false-blame rate** is the result this project was built for: across every
-red-herring variant, an innocent config change is never ranked #1. Two `ambiguous`
-variants are excluded and reported as `excluded_unscoreable` — that scenario type has
-no single right answer by construction, so scoring it hit-or-miss would be scoring a
-coin flip.
+The **0.000 false-blame rate holds in both modes** and is the result this project was
+built for: across every red-herring variant, an innocent config change is never ranked
+#1 — by the *deterministic* pipeline when the agent is absent, and by the agent when it
+is present. Nothing about turning the LLM on weakened it.
+
+The two rows were identical until a real key existed, because both were the autopilot.
+They are now genuinely different pipelines, and the agent is the worse of the two on
+aggregate accuracy — see §Agent efficiency for the per-scenario breakdown, which is
+where the interesting part lives.
+
+Two `ambiguous` variants are excluded and reported as `excluded_unscoreable` — that
+scenario type has no single right answer by construction, so scoring it hit-or-miss
+would be scoring a coin flip.
 
 ### Held-out RE2-SS (n=1) — and what the ablation exposed
 
@@ -770,40 +779,75 @@ explains the anomalies" fires for the true root cause too, and demotes it.
 n=1, so this is a **pointer, not a p-value** — but it points hard, and it's the first
 thing to chase with more of the dataset extracted.
 
-### Agent efficiency — the headline, and what it costs to make it real
+### Agent efficiency — the headline, measured, and it doesn't hold
 
-The claim this project makes is *equal-or-better AC@k for fewer expensive ops*: the
-fixed pipeline always spends 5 counterfactuals + 1 twin whatever the case looks like,
-while the agent picks its targets.
+The claim this project was built to make is *equal-or-better accuracy for fewer
+expensive ops*: the fixed pipeline always spends 5 counterfactuals + 1 twin whatever
+the case looks like, while the agent picks its targets. That claim is now **measured
+against a real `OPENAI_API_KEY`** — $1.07, 25 synthetic cases, of which **24 ran
+genuinely agentic** (1 degraded to autopilot), so this is the agent, not the fallback
+wearing its label.
 
-The agent path is now **live and measured** — one case, `clean_cascade-01`, with a
-real key:
+**It is not supported.**
 
-| | measured |
-|---|---|
-| cost per case | **$0.0608** (31 API calls: 20 × gpt-4o, 11 × gpt-4o-mini) |
-| investigator | 6 tool calls, chose `run_twin` itself, then `budget_exhausted` |
-| challenger | 4 tool calls, `budget_exhausted` |
-| remediation | `completed` — 3 rehearsals, recommended `scale_replicas` |
-| verdict | `catalogue` rank 1 (correct), tier CORRELATED |
+| synthetic (n=23 scored) | precision@1 | precision@3 | expensive ops | wall clock |
+|---|---|---|---|---|
+| **fixed** | **0.522** | **0.739** | 5.04 | 2.9s |
+| **agentic** | 0.348 | 0.696 | **1.56** | 34.2s |
 
-Two honest caveats. First, both reasoning agents hit **`budget_exhausted`** and rule 11
-carried the run — the 60s wall clock is tight once `run_twin` is on the critical path,
-so what the numbers above show is an agent that *starts* well, not one that finishes.
-Second, `eval/results.md` still reports the **fixed** pipeline across the suite: the
-full agentic benchmark is 26 cases × $0.06 ≈ **$1.60** of live calls, which has not
-been spent. The table in `results.md` states the measured spend and the cap, so a
-mixed run (cap trips mid-suite → remaining cases degrade to autopilot) is visible
-rather than silent.
+The agent buys its 3.2× saving with a **33% relative drop in precision@1**, and is 12×
+slower in wall clock (it is waiting on a network; the autopilot is doing arithmetic).
+Cheaper and worse is not the trade the pitch describes.
 
-To make it real:
+**But the aggregate hides the real result.** Broken out by scenario type, the agent
+isn't uniformly worse — it is *specifically* better exactly where the case rewards
+reasoning, and *specifically* worse where it rewards brute force:
+
+| scenario type | agentic p@1 | fixed p@1 | agent ops | fixed ops | |
+|---|---|---|---|---|---|
+| `red_herring_config` | **1.00** (5/5) | 0.80 (4/5) | 2.2 | 6.4 | **agent wins — the claim, exactly** |
+| `topology_drift` | 0.50 (1/2) | 0.50 (1/2) | 1.5 | 4.0 | tie for 2.7× less |
+| `missing_telemetry` | 0.00 (0/4) | 0.00 (0/4) | 2.0 | 5.0 | neither can do it |
+| `clean_cascade` | 0.40 (2/5) | 0.60 (3/5) | 1.2 | 5.2 | agent loses |
+| `alert_storm` | 0.00 (0/3) | 0.33 (1/3) | 1.0 | 6.0 | agent loses |
+| `confounded_pair` | **0.00** (0/4) | **0.75** (3/4) | 1.8 | 5.0 | **agent collapses** |
+
+`red_herring_config` is the scenario the agentic pitch is about — an innocent config
+change sits next to the real fault, and *choosing* which counterfactual to spend beats
+spraying five of them: 5/5 for a third of the ops. `confounded_pair` is the mirror
+image, and it's brutal: two plausible components, and the only thing that separates
+them is the exhaustive counterfactual sweep the agent declines to run. The agent goes
+0/4 where the dumb pipeline goes 3/4.
+
+So the honest conclusion is not "agents don't work" but **"selectivity is a bet, and it
+pays exactly where the evidence is decisive and loses where it's ambiguous."** The
+fixed pipeline's stupidity is a form of robustness.
+
+Two caveats that could move these numbers, neither of which is an excuse:
+
+- The reasoning agents frequently hit **`budget_exhausted`** (mean 5.96 tool calls,
+  2.12 of 3 cost points, against a 60s wall clock that `run_twin` alone can eat). This
+  measures the agent *under this budget*, not the ceiling. `confounded_pair` needing
+  ~5 counterfactuals cannot fit in 3 cost points — the budget may simply be
+  mis-specified for that scenario type rather than the agent mis-reasoning.
+- n=23, one seed. The per-type cells are 2–5 cases each. Directional, not significant.
+
+The **held-out RE2-SS case (n=1)** tells the same story: agentic Avg@5 `0.00` for 1
+expensive op against fixed's `0.40` for 6 — and `fixed-no-counterfactual` beats both at
+`1.00` for 1 op. On that case the counterfactual is actively harmful, so spending less
+on it is right for a reason the agent didn't have.
+
+Reproduce (~$1.07, ~20 min):
 
 ```bash
-VERDICT_SPEND_CAP_USD=3.00 make bench      # ~$1.60 of live agent runs
+VERDICT_SPEND_CAP_USD=3.00 make bench
 ```
 
-Cost is metered per response in `backend/agents/usage.py` — `usd_per_case_measured`
-in `results.json` is a measurement, not the rate card it used to be.
+Cost is metered per response in `backend/agents/usage.py`: **$0.041/case measured**
+(335 gpt-4o + 185 gpt-4o-mini calls, 453k prompt tokens, $1.036 total).
+`usd_per_case_measured` in `results.json` is now a measurement rather than the rate
+card it used to be. Keep the cap above the expected spend — if it trips mid-suite the
+remaining cases silently degrade to autopilot and the table becomes a mixture.
 
 ### External baselines
 
