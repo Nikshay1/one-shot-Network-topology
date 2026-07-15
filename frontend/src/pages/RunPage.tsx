@@ -3,8 +3,9 @@ import { useRunStream } from '@/hooks/useRunStream'
 import { useRunStore } from '@/store/useRunStore'
 import { IncidentView } from '@/pages/IncidentView'
 import { VerdictView } from '@/pages/VerdictView'
+import { AgentsView } from '@/pages/AgentsView'
+import { ReportView } from '@/pages/ReportView'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
 
 /**
  * Every demo-critical state is URL-addressable (`/run/{id}?view=verdict`) so the
@@ -17,17 +18,6 @@ export const DEFAULT_VIEW: RunView = 'incident'
 
 export function parseView(raw: string | null): RunView {
   return RUN_VIEWS.includes((raw ?? '') as RunView) ? (raw as RunView) : DEFAULT_VIEW
-}
-
-function Placeholder({ step, children }: { step: string; children: string }) {
-  return (
-    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border">
-      <div className="space-y-2 p-8 text-center">
-        <Badge variant="outline">{step}</Badge>
-        <p className="text-sm text-muted-foreground">{children}</p>
-      </div>
-    </div>
-  )
 }
 
 export function RunPage() {
@@ -80,11 +70,17 @@ export function RunPage() {
         >
           {runId && <VerdictView runId={runId} />}
         </TabsContent>
-        <TabsContent value="agents" className="min-h-0 flex-1 data-[state=inactive]:hidden">
-          <Placeholder step="F5">Agent transcripts and the twin/challenger trail land here.</Placeholder>
+        <TabsContent
+          value="agents"
+          className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          {runId && <AgentsView runId={runId} />}
         </TabsContent>
-        <TabsContent value="report" className="min-h-0 flex-1 data-[state=inactive]:hidden">
-          <Placeholder step="F5">Narration and the PDF report land here.</Placeholder>
+        <TabsContent
+          value="report"
+          className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          {runId && <ReportView runId={runId} />}
         </TabsContent>
       </Tabs>
     </div>

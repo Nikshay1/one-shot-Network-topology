@@ -176,10 +176,21 @@ describe('evidence', () => {
     expect(correlated.some((i) => i.text.includes('absence is real'))).toBe(true)
   })
 
-  it('surfaces twin.missing_evidence verbatim', () => {
-    const h = ranked.find((x) => x.suspect_component === 'catalogue')!
+  it('surfaces twin.missing_evidence verbatim when the hypothesis has any', () => {
+    // Note what the recording models: in agentic mode rescore rebuilds the twin
+    // block from the ledger text and hardcodes missing_evidence to [], so the
+    // hypothesis carries none even though the twin found some. The twin_result
+    // SSE event keeps them — see the Twin tab. Here we prove the pass-through
+    // with an explicit value.
+    const h: RankedHypothesis = {
+      ...ranked[0]!,
+      twin: { run: 'twin-catalogue-db', similarity: 0.86, verdict: 'match', missing_evidence: ['orders-db'] },
+    }
     const { missing } = buildEvidence({ hypothesis: h, anomalies })
-    expect(missing.some((i) => i.text === 'config change on catalogue')).toBe(true)
+    expect(missing.some((i) => i.text === 'orders-db')).toBe(true)
+
+    const asShipped = ranked.find((x) => x.suspect_component === 'catalogue')!
+    expect(asShipped.twin!.missing_evidence).toEqual([])
   })
 
   it('joins coverage_gap facts on component, since they carry no hypothesis_id', () => {
@@ -220,7 +231,7 @@ describe('evidence', () => {
     expect(missing.some((i) => i.text === gap.statement)).toBe(false)
   })
 
-  it('records an upheld challenger attack as a blocker, a rejected one as support', () => {
+  it('records an upheld challenger attack as a blocker', () => {
     const none: AnomalyEvent[] = []
     const upheld: RankedHypothesis = {
       ...ranked[0]!,
@@ -235,8 +246,22 @@ describe('evidence', () => {
         i.text.includes('UPHELD'),
       ),
     ).toBe(true)
+  })
+
+  it('still renders the upheld flag rather than assuming it', () => {
+    // The backend discards rejected attacks before they reach the wire, so this
+    // branch is unreachable in production — but the contract types `upheld` as a
+    // bool, and rendering the flag we were given beats assuming it.
+    const rejected: RankedHypothesis = {
+      ...ranked[0]!,
+      challenger: {
+        attacks: [
+          { claim: 'it was the CPU', contradicting_event_id: 'metric-catalogue-000001', upheld: false },
+        ],
+      },
+    }
     expect(
-      buildEvidence({ hypothesis: ranked[0]!, anomalies: none }).confirmed.some((i) =>
+      buildEvidence({ hypothesis: rejected, anomalies: [] }).confirmed.some((i) =>
         i.text.includes('rejected'),
       ),
     ).toBe(true)

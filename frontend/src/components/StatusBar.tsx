@@ -101,7 +101,19 @@ export function StatusBar() {
         ) : (
           <span className="text-xs text-muted-foreground">no run</span>
         )}
-        <Badge variant={status === 'error' ? 'danger' : 'outline'}>{status}</Badge>
+        {/* Amber, not red: a failed pipeline still produces a verdict via the
+            autopilot fallback (rule 11), so it is a warning to mention rather
+            than a stop sign. */}
+        <Badge
+          variant={status === 'error' ? 'anomaly' : 'outline'}
+          title={
+            status === 'error'
+              ? 'The pipeline reported an error. The run may still have a verdict — rule 11 falls back to the deterministic autopilot.'
+              : undefined
+          }
+        >
+          {status}
+        </Badge>
       </div>
 
       <StageIndicator />

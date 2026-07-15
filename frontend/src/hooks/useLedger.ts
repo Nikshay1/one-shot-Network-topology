@@ -9,9 +9,14 @@ export interface LedgerState {
 }
 
 /**
- * Ledger facts for a component. Refetches when `nonce` changes, which the caller
- * bumps on pipeline_done — facts are filed as the pipeline runs, so a fetch made
- * mid-run legitimately returns fewer than the final set.
+ * Ledger facts. Every filter is optional and an empty query means "all facts" —
+ * which is what the report needs to resolve its citations, and what the evidence
+ * panel needs for coverage_gap facts (they carry hypothesis_id=None, so they can
+ * only be reached by kind).
+ *
+ * Refetches when `nonce` changes, which callers bump on pipeline_done: facts are
+ * filed as the pipeline runs, so a mid-run fetch legitimately returns fewer than
+ * the final set.
  */
 export function useLedger(
   runId: string | null | undefined,
@@ -24,7 +29,7 @@ export function useLedger(
   const key = JSON.stringify(query)
 
   useEffect(() => {
-    if (!runId || !query.component_id) {
+    if (!runId) {
       setFacts([])
       return
     }

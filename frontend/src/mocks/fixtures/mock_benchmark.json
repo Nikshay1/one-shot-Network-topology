@@ -1,21 +1,1508 @@
 {
-  "generated_at": 1700000600.0,
   "runs": [
+    {
+      "case_id": "catalogue_cpu-1",
+      "suite": "heldout",
+      "mode": "fixed",
+      "ranked": [
+        "session-db",
+        "user-db",
+        "rabbitmq",
+        "catalogue",
+        "carts-db",
+        "orders-db",
+        "queue-master",
+        "shipping",
+        "carts"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "session-db",
+      "wall_clock_s": 5.41,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:catalogue",
+        "counterfactual:orders-db",
+        "counterfactual:queue-master",
+        "counterfactual:shipping",
+        "twin:session-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": null,
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "catalogue_cpu-1",
+      "suite": "heldout",
+      "mode": "fixed-no-counterfactual",
+      "ranked": [
+        "catalogue",
+        "queue-master",
+        "shipping",
+        "carts",
+        "orders-db",
+        "session-db",
+        "user-db",
+        "rabbitmq",
+        "carts-db"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 7.919,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 1,
+      "expensive_detail": [
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": null,
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "catalogue_cpu-1",
+      "suite": "heldout",
+      "mode": "fixed-no-twin",
+      "ranked": [
+        "session-db",
+        "user-db",
+        "rabbitmq",
+        "catalogue",
+        "carts-db",
+        "orders-db",
+        "queue-master",
+        "shipping",
+        "carts"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "session-db",
+      "wall_clock_s": 1.824,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:catalogue",
+        "counterfactual:orders-db",
+        "counterfactual:queue-master",
+        "counterfactual:shipping"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": null,
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "catalogue_cpu-1",
+      "suite": "heldout",
+      "mode": "fixed-no-topology",
+      "ranked": [
+        "session-db",
+        "user-db",
+        "catalogue",
+        "rabbitmq",
+        "orders-db",
+        "queue-master",
+        "shipping",
+        "carts",
+        "carts-db"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "session-db",
+      "wall_clock_s": 2.879,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:catalogue",
+        "counterfactual:orders-db",
+        "counterfactual:queue-master",
+        "counterfactual:shipping",
+        "twin:session-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": null,
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue-db",
+        "carts",
+        "shipping",
+        "orders-db",
+        "catalogue",
+        "session-db",
+        "user-db",
+        "queue-master",
+        "user",
+        "rabbitmq",
+        "front-end",
+        "orders",
+        "payment",
+        "carts-db",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue-db",
+      "wall_clock_s": 4.297,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts-db",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:rabbitmq",
+        "twin:catalogue-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue",
+        "shipping",
+        "front-end",
+        "orders-db",
+        "user-db",
+        "user",
+        "payment",
+        "session-db",
+        "queue-master",
+        "catalogue-db",
+        "rabbitmq",
+        "loadgenerator",
+        "carts-db",
+        "carts",
+        "orders"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 2.775,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:carts-db",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:rabbitmq",
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-03",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts-db",
+        "carts",
+        "shipping",
+        "orders-db",
+        "catalogue",
+        "session-db",
+        "user-db",
+        "catalogue-db",
+        "queue-master",
+        "front-end",
+        "rabbitmq",
+        "user",
+        "payment",
+        "orders",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 4.304,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "counterfactual:rabbitmq",
+        "twin:carts-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "ambiguous-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "orders"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 1.298,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 2,
+      "expensive_detail": [
+        "counterfactual:orders",
+        "twin:orders"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "ambiguous",
+      "error": null,
+      "unscoreable": true
+    },
+    {
+      "case_id": "ambiguous-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [],
+      "tier_of_top1": null,
+      "top1": null,
+      "wall_clock_s": 0.003,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 0,
+      "expensive_detail": [],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "ambiguous",
+      "error": null,
+      "unscoreable": true
+    },
+    {
+      "case_id": "clean_cascade-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 4.67,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "payment",
+        "user-db",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "payment",
+      "wall_clock_s": 1.982,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "counterfactual:user-db",
+        "twin:payment"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-03",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts-db",
+        "carts",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 4.549,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:carts-db",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "twin:carts-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-04",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "payment",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "payment",
+      "wall_clock_s": 1.813,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "twin:payment"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-05",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 3.104,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user",
+        "twin:user"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 4.464,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "twin:orders"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 4.593,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-03",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts",
+        "orders",
+        "orders-db",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts",
+      "wall_clock_s": 1.642,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:orders-db",
+        "twin:carts"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-04",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "loadgenerator",
+        "user",
+        "catalogue-db",
+        "catalogue",
+        "front-end",
+        "orders"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "loadgenerator",
+      "wall_clock_s": 2.189,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:catalogue-db",
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "counterfactual:user",
+        "twin:loadgenerator"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts",
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts",
+      "wall_clock_s": 1.56,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user",
+        "twin:carts"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "user-db",
+        "orders",
+        "loadgenerator",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user-db",
+      "wall_clock_s": 1.893,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user-db",
+        "twin:user-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-03",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 1.608,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-04",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 3.303,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user",
+        "twin:user"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "catalogue",
+        "payment",
+        "front-end",
+        "shipping",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 4.764,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:payment",
+        "counterfactual:shipping",
+        "twin:catalogue"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "orders",
+        "catalogue-db",
+        "session-db",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 1.863,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:catalogue-db",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:session-db",
+        "twin:orders"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-03",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts",
+        "loadgenerator",
+        "user",
+        "orders",
+        "catalogue",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts",
+      "wall_clock_s": 1.81,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "counterfactual:user",
+        "twin:carts"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-04",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "loadgenerator",
+        "payment",
+        "user",
+        "orders",
+        "front-end",
+        "catalogue-db",
+        "catalogue"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "loadgenerator",
+      "wall_clock_s": 2.406,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 7,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:catalogue-db",
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "counterfactual:user",
+        "twin:loadgenerator"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-05",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "user",
+        "loadgenerator",
+        "shipping",
+        "carts-db",
+        "orders",
+        "front-end",
+        "catalogue-db"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 4.95,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 7,
+      "expensive_detail": [
+        "counterfactual:carts-db",
+        "counterfactual:catalogue-db",
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "counterfactual:shipping",
+        "counterfactual:user",
+        "twin:user"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "topology_drift-01",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "orders",
+        "loadgenerator",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 4.516,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "twin:orders"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "topology_drift",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "topology_drift-02",
+      "suite": "synthetic",
+      "mode": "fixed",
+      "ranked": [
+        "carts-db",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 2.838,
+      "usd": 0,
+      "tool_calls": 0,
+      "cost_points": 0,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:carts-db",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:carts-db"
+      ],
+      "pipeline_mode": "autopilot",
+      "scenario_type": "topology_drift",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "catalogue_cpu-1",
+      "suite": "heldout",
+      "mode": "agentic",
+      "ranked": [
+        "rabbitmq-exporter",
+        "session-db",
+        "user-db",
+        "rabbitmq",
+        "catalogue",
+        "orders-db",
+        "carts-db",
+        "queue-master",
+        "shipping",
+        "carts"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "rabbitmq-exporter",
+      "wall_clock_s": 38.467,
+      "usd": 0.050021,
+      "tool_calls": 8,
+      "cost_points": 5,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:catalogue",
+        "counterfactual:orders-db",
+        "counterfactual:queue-master",
+        "counterfactual:shipping"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": null,
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "front-end",
+        "orders",
+        "rabbitmq",
+        "loadgenerator",
+        "carts-db",
+        "catalogue-db",
+        "carts",
+        "shipping",
+        "orders-db",
+        "catalogue",
+        "session-db",
+        "user-db",
+        "queue-master",
+        "user",
+        "payment"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "front-end",
+      "wall_clock_s": 44.741,
+      "usd": 0.04793,
+      "tool_calls": 8,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:front-end",
+        "twin:orders",
+        "twin:rabbitmq"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "loadgenerator",
+        "rabbitmq",
+        "carts-db",
+        "carts",
+        "orders",
+        "catalogue",
+        "shipping",
+        "front-end",
+        "orders-db",
+        "user-db",
+        "user",
+        "payment",
+        "session-db",
+        "queue-master",
+        "catalogue-db"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "loadgenerator",
+      "wall_clock_s": 42.392,
+      "usd": 0.054398,
+      "tool_calls": 9,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:carts-db",
+        "twin:loadgenerator",
+        "twin:rabbitmq"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "alert_storm-03",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "front-end",
+        "orders",
+        "rabbitmq",
+        "payment",
+        "loadgenerator",
+        "carts-db",
+        "carts",
+        "shipping",
+        "orders-db",
+        "catalogue",
+        "session-db",
+        "user-db",
+        "catalogue-db",
+        "queue-master",
+        "user"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "front-end",
+      "wall_clock_s": 48.014,
+      "usd": 0.044719,
+      "tool_calls": 9,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:front-end",
+        "twin:orders",
+        "twin:rabbitmq"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "alert_storm",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "ambiguous-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "orders"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 45.942,
+      "usd": 0.077671,
+      "tool_calls": 16,
+      "cost_points": 3,
+      "expensive_ops": 2,
+      "expensive_detail": [
+        "counterfactual:orders",
+        "twin:orders"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "ambiguous",
+      "error": null,
+      "unscoreable": true
+    },
+    {
+      "case_id": "ambiguous-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [],
+      "tier_of_top1": null,
+      "top1": null,
+      "wall_clock_s": 8.218,
+      "usd": 0.009885,
+      "tool_calls": 1,
+      "cost_points": 0,
+      "expensive_ops": 0,
+      "expensive_detail": [],
+      "pipeline_mode": "agentic",
+      "scenario_type": "ambiguous",
+      "error": null,
+      "unscoreable": true
+    },
     {
       "case_id": "clean_cascade-01",
       "suite": "synthetic",
       "mode": "agentic",
-      "ranked": ["catalogue-db", "catalogue", "front-end", "orders", "carts"],
-      "tier_of_top1": "CONFIRMED",
-      "top1": "catalogue-db",
-      "wall_clock_s": 34.2,
-      "usd": 0.061,
-      "tool_calls": 31,
+      "ranked": [
+        "front-end",
+        "catalogue",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "front-end",
+      "wall_clock_s": 30.38,
+      "usd": 0.031199,
+      "tool_calls": 6,
       "cost_points": 7,
-      "expensive_ops": 3,
-      "expensive_detail": ["counterfactual:catalogue-db", "twin:hyp-catalogue_db-01"],
+      "expensive_ops": 2,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "twin:catalogue"
+      ],
       "pipeline_mode": "agentic",
       "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "payment",
+        "user-db",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "payment",
+      "wall_clock_s": 41.986,
+      "usd": 0.051756,
+      "tool_calls": 9,
+      "cost_points": 7,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "counterfactual:user-db",
+        "twin:payment"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-03",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "carts-db",
+        "carts",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 65.004,
+      "usd": 0.051813,
+      "tool_calls": 8,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:carts",
+        "twin:carts-db",
+        "twin:orders"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-04",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "payment",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "payment",
+      "wall_clock_s": 50.957,
+      "usd": 0.044507,
+      "tool_calls": 7,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:front-end",
+        "twin:orders",
+        "twin:payment"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "clean_cascade-05",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 49.951,
+      "usd": 0.042862,
+      "tool_calls": 7,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:front-end",
+        "twin:orders",
+        "twin:user"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "clean_cascade",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 49.257,
+      "usd": 0.04448,
+      "tool_calls": 7,
+      "cost_points": 7,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "twin:front-end",
+        "twin:orders"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "catalogue",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 48.006,
+      "usd": 0.042841,
+      "tool_calls": 7,
+      "cost_points": 7,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:catalogue",
+        "twin:front-end"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-03",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "carts",
+        "orders",
+        "orders-db",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts",
+      "wall_clock_s": 29.442,
+      "usd": 0.047079,
+      "tool_calls": 8,
+      "cost_points": 7,
+      "expensive_ops": 6,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:orders-db",
+        "twin:carts"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "confounded_pair-04",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "user",
+        "catalogue-db",
+        "catalogue",
+        "front-end",
+        "orders",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 34.79,
+      "usd": 0.052248,
+      "tool_calls": 9,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:catalogue",
+        "twin:catalogue-db",
+        "twin:front-end"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "confounded_pair",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "carts",
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts",
+      "wall_clock_s": 43.526,
+      "usd": 0.086607,
+      "tool_calls": 14,
+      "cost_points": 5,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:carts",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "user-db",
+        "orders",
+        "loadgenerator",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user-db",
+      "wall_clock_s": 28.497,
+      "usd": 0.035271,
+      "tool_calls": 7,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:loadgenerator",
+        "twin:orders",
+        "twin:user-db"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-03",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "catalogue",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "catalogue",
+      "wall_clock_s": 31.116,
+      "usd": 0.050046,
+      "tool_calls": 10,
+      "cost_points": 3,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "missing_telemetry-04",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "user",
+        "orders",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "user",
+      "wall_clock_s": 35.379,
+      "usd": 0.06832,
+      "tool_calls": 12,
+      "cost_points": 4,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "counterfactual:orders",
+        "counterfactual:user"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "missing_telemetry",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "payment",
+        "shipping",
+        "catalogue",
+        "loadgenerator",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "payment",
+      "wall_clock_s": 39.84,
+      "usd": 0.073053,
+      "tool_calls": 13,
+      "cost_points": 6,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "twin:catalogue",
+        "twin:front-end"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "orders",
+        "front-end",
+        "catalogue-db",
+        "session-db",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 35.753,
+      "usd": 0.049185,
+      "tool_calls": 8,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:catalogue-db",
+        "twin:front-end",
+        "twin:orders"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "red_herring_config",
       "error": null,
       "unscoreable": false
     },
@@ -23,121 +1510,497 @@
       "case_id": "red_herring_config-03",
       "suite": "synthetic",
       "mode": "agentic",
-      "ranked": ["carts-db", "carts", "front-end"],
+      "ranked": [
+        "carts",
+        "orders",
+        "user",
+        "front-end",
+        "catalogue",
+        "loadgenerator"
+      ],
       "tier_of_top1": "CORRELATED",
-      "top1": "carts-db",
-      "wall_clock_s": 36.8,
-      "usd": 0.058,
-      "tool_calls": 28,
-      "cost_points": 7,
-      "expensive_ops": 2,
-      "expensive_detail": ["counterfactual:carts-db"],
+      "top1": "carts",
+      "wall_clock_s": 31.739,
+      "usd": 0.047898,
+      "tool_calls": 8,
+      "cost_points": 6,
+      "expensive_ops": 3,
+      "expensive_detail": [
+        "twin:carts",
+        "twin:orders",
+        "twin:user"
+      ],
       "pipeline_mode": "agentic",
       "scenario_type": "red_herring_config",
       "error": null,
       "unscoreable": false
     },
     {
-      "case_id": "confounded_pair-02",
+      "case_id": "red_herring_config-04",
       "suite": "synthetic",
-      "mode": "autopilot",
-      "ranked": ["orders-db", "orders"],
-      "tier_of_top1": "MISSING_EVIDENCE",
-      "top1": "orders-db",
-      "wall_clock_s": 21.4,
-      "usd": 0.0,
-      "tool_calls": 0,
+      "mode": "agentic",
+      "ranked": [
+        "loadgenerator",
+        "catalogue-db",
+        "payment",
+        "user",
+        "orders",
+        "front-end",
+        "catalogue"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "loadgenerator",
+      "wall_clock_s": 32.934,
+      "usd": 0.061771,
+      "tool_calls": 10,
+      "cost_points": 5,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:catalogue",
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "counterfactual:payment",
+        "counterfactual:user"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "red_herring_config-05",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "orders",
+        "front-end",
+        "shipping",
+        "carts-db",
+        "user",
+        "loadgenerator",
+        "catalogue-db"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 32.112,
+      "usd": 0.054189,
+      "tool_calls": 8,
       "cost_points": 7,
-      "expensive_ops": 6,
-      "expensive_detail": ["autopilot:5xcounterfactual", "autopilot:twin"],
-      "pipeline_mode": "autopilot",
-      "scenario_type": "confounded_pair",
+      "expensive_ops": 1,
+      "expensive_detail": [
+        "counterfactual:user"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "red_herring_config",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "topology_drift-01",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "orders",
+        "loadgenerator",
+        "front-end"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "orders",
+      "wall_clock_s": 45.096,
+      "usd": 0.059783,
+      "tool_calls": 10,
+      "cost_points": 7,
+      "expensive_ops": 4,
+      "expensive_detail": [
+        "counterfactual:front-end",
+        "counterfactual:orders",
+        "twin:front-end",
+        "twin:orders"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "topology_drift",
+      "error": null,
+      "unscoreable": false
+    },
+    {
+      "case_id": "topology_drift-02",
+      "suite": "synthetic",
+      "mode": "agentic",
+      "ranked": [
+        "carts-db",
+        "front-end",
+        "loadgenerator"
+      ],
+      "tier_of_top1": "CORRELATED",
+      "top1": "carts-db",
+      "wall_clock_s": 40.161,
+      "usd": 0.05211,
+      "tool_calls": 9,
+      "cost_points": 7,
+      "expensive_ops": 5,
+      "expensive_detail": [
+        "counterfactual:carts-db",
+        "counterfactual:front-end",
+        "counterfactual:loadgenerator",
+        "twin:carts-db",
+        "twin:front-end"
+      ],
+      "pipeline_mode": "agentic",
+      "scenario_type": "topology_drift",
       "error": null,
       "unscoreable": false
     }
   ],
   "metrics": {
-    "synthetic:agentic": {
-      "n": 24,
+    "heldout:agentic": {
+      "AC@1": 0,
+      "AC@3": 0,
+      "Avg@5": 0.2,
+      "n": 1,
       "excluded_unscoreable": 0,
       "errors": 0,
-      "precision@1": 0.75,
-      "precision@3": 0.9167,
-      "red_herring_false_blame_rate": 0.4,
-      "red_herring_n": 5,
-      "median_time_to_rca_s": 34.1,
       "efficiency": {
-        "n": 24,
-        "mean_tool_calls": 29.4,
-        "mean_cost_points": 6.8,
-        "mean_expensive_ops": 2.6,
-        "mean_wall_clock_s": 34.9,
-        "total_wall_clock_s": 837.6
+        "n": 1,
+        "mean_tool_calls": 8,
+        "mean_cost_points": 5,
+        "mean_expensive_ops": 5,
+        "mean_wall_clock_s": 38.467,
+        "total_wall_clock_s": 38.467
+      },
+      "llm_cost": {
+        "openai_api_key_present": true,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0.050021,
+        "usd_total_measured": 0.050021,
+        "spend_cap_usd": 3,
+        "meter": {
+          "usd": 0.050021,
+          "cap_usd": 3,
+          "calls": 21,
+          "prompt_tokens": 20195,
+          "completion_tokens": 1436,
+          "by_model": {
+            "gpt-4o": {
+              "calls": 15,
+              "prompt_tokens": 15202,
+              "completion_tokens": 1107,
+              "usd": 0.049075
+            },
+            "gpt-4o-mini": {
+              "calls": 6,
+              "prompt_tokens": 4993,
+              "completion_tokens": 329,
+              "usd": 0.000946
+            }
+          }
+        },
+        "degraded_to_autopilot": 0,
+        "note": "OPENAI_API_KEY present: $0.0500/case measured across 1 runs — investigator (gpt-4o), challenger/remediation (gpt-4o-mini) and narrator, metered per response in backend/agents/usage.py."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
+    },
+    "heldout:fixed": {
+      "AC@1": 0,
+      "AC@3": 0,
+      "Avg@5": 0.4,
+      "n": 1,
+      "excluded_unscoreable": 0,
+      "errors": 0,
+      "efficiency": {
+        "n": 1,
+        "mean_tool_calls": 0,
+        "mean_cost_points": 0,
+        "mean_expensive_ops": 6,
+        "mean_wall_clock_s": 5.41,
+        "total_wall_clock_s": 5.41
       },
       "llm_cost": {
         "openai_api_key_present": false,
-        "offline": true,
-        "prices_usd_per_1m_tokens": { "gpt-4o-mini": { "prompt": 0.15, "completion": 0.6 } },
-        "usd_per_case_measured": 0.0,
-        "usd_total_measured": 0.0,
-        "spend_cap_usd": 5.0,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0,
+        "usd_total_measured": 0,
+        "spend_cap_usd": 0.5,
         "meter": {
-          "usd": 0.0,
-          "cap_usd": 5.0,
+          "usd": 0,
+          "cap_usd": 0.5,
           "calls": 0,
           "prompt_tokens": 0,
           "completion_tokens": 0,
           "by_model": {}
         },
-        "degraded_to_autopilot": false,
-        "note": "mock fixture — no live calls were made"
+        "degraded_to_autopilot": 0,
+        "note": "No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the deterministic autopilot and cost per case is $0.00. The agentic rows below are therefore NOT a measurement of the agent — they are the autopilot under an agentic label. Re-run with a key for the real table."
       },
-      "fixed_budget_note": "max_cost_points is derived from autopilot_spend(); both sides may spend exactly the same."
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
     },
-    "synthetic:autopilot": {
-      "n": 24,
+    "heldout:fixed-no-counterfactual": {
+      "AC@1": 1,
+      "AC@3": 1,
+      "Avg@5": 1,
+      "n": 1,
       "excluded_unscoreable": 0,
       "errors": 0,
-      "precision@1": 0.7083,
-      "precision@3": 0.875,
-      "red_herring_false_blame_rate": 0.0,
-      "red_herring_n": 5,
-      "median_time_to_rca_s": 21.9,
       "efficiency": {
-        "n": 24,
-        "mean_tool_calls": 0.0,
-        "mean_cost_points": 7.0,
-        "mean_expensive_ops": 6.0,
-        "mean_wall_clock_s": 22.3,
-        "total_wall_clock_s": 535.2
+        "n": 1,
+        "mean_tool_calls": 0,
+        "mean_cost_points": 0,
+        "mean_expensive_ops": 1,
+        "mean_wall_clock_s": 7.919,
+        "total_wall_clock_s": 7.919
       },
-      "fixed_budget_note": "max_cost_points is derived from autopilot_spend(); both sides may spend exactly the same."
+      "llm_cost": {
+        "openai_api_key_present": false,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0,
+        "usd_total_measured": 0,
+        "spend_cap_usd": 0.5,
+        "meter": {
+          "usd": 0,
+          "cap_usd": 0.5,
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "by_model": {}
+        },
+        "degraded_to_autopilot": 0,
+        "note": "No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the deterministic autopilot and cost per case is $0.00. The agentic rows below are therefore NOT a measurement of the agent — they are the autopilot under an agentic label. Re-run with a key for the real table."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
+    },
+    "heldout:fixed-no-twin": {
+      "AC@1": 0,
+      "AC@3": 0,
+      "Avg@5": 0.4,
+      "n": 1,
+      "excluded_unscoreable": 0,
+      "errors": 0,
+      "efficiency": {
+        "n": 1,
+        "mean_tool_calls": 0,
+        "mean_cost_points": 0,
+        "mean_expensive_ops": 5,
+        "mean_wall_clock_s": 1.824,
+        "total_wall_clock_s": 1.824
+      },
+      "llm_cost": {
+        "openai_api_key_present": false,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0,
+        "usd_total_measured": 0,
+        "spend_cap_usd": 0.5,
+        "meter": {
+          "usd": 0,
+          "cap_usd": 0.5,
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "by_model": {}
+        },
+        "degraded_to_autopilot": 0,
+        "note": "No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the deterministic autopilot and cost per case is $0.00. The agentic rows below are therefore NOT a measurement of the agent — they are the autopilot under an agentic label. Re-run with a key for the real table."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
+    },
+    "heldout:fixed-no-topology": {
+      "AC@1": 0,
+      "AC@3": 1,
+      "Avg@5": 0.6,
+      "n": 1,
+      "excluded_unscoreable": 0,
+      "errors": 0,
+      "efficiency": {
+        "n": 1,
+        "mean_tool_calls": 0,
+        "mean_cost_points": 0,
+        "mean_expensive_ops": 6,
+        "mean_wall_clock_s": 2.879,
+        "total_wall_clock_s": 2.879
+      },
+      "llm_cost": {
+        "openai_api_key_present": false,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0,
+        "usd_total_measured": 0,
+        "spend_cap_usd": 0.5,
+        "meter": {
+          "usd": 0,
+          "cap_usd": 0.5,
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "by_model": {}
+        },
+        "degraded_to_autopilot": 0,
+        "note": "No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the deterministic autopilot and cost per case is $0.00. The agentic rows below are therefore NOT a measurement of the agent — they are the autopilot under an agentic label. Re-run with a key for the real table."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
+    },
+    "synthetic:fixed": {
+      "n": 23,
+      "excluded_unscoreable": 2,
+      "errors": 0,
+      "precision@1": 0.5217,
+      "precision@3": 0.7391,
+      "red_herring_false_blame_rate": 0,
+      "red_herring_n": 5,
+      "median_time_to_rca_s": 2.838,
+      "efficiency": {
+        "n": 25,
+        "mean_tool_calls": 0,
+        "mean_cost_points": 0,
+        "mean_expensive_ops": 5.04,
+        "mean_wall_clock_s": 2.928,
+        "total_wall_clock_s": 73.194
+      },
+      "llm_cost": {
+        "openai_api_key_present": false,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0,
+        "usd_total_measured": 0,
+        "spend_cap_usd": 0.5,
+        "meter": {
+          "usd": 0,
+          "cap_usd": 0.5,
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "by_model": {}
+        },
+        "degraded_to_autopilot": 0,
+        "note": "No OPENAI_API_KEY: every agent resolved to no-LLM, so rule 11 ran the deterministic autopilot and cost per case is $0.00. The agentic rows below are therefore NOT a measurement of the agent — they are the autopilot under an agentic label. Re-run with a key for the real table."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
+    },
+    "synthetic:agentic": {
+      "n": 23,
+      "excluded_unscoreable": 2,
+      "errors": 0,
+      "precision@1": 0.3913,
+      "precision@3": 0.6957,
+      "red_herring_false_blame_rate": 0,
+      "red_herring_n": 5,
+      "median_time_to_rca_s": 40.161,
+      "efficiency": {
+        "n": 25,
+        "mean_tool_calls": 8.8,
+        "mean_cost_points": 5.68,
+        "mean_expensive_ops": 3.48,
+        "mean_wall_clock_s": 39.409,
+        "total_wall_clock_s": 985.233
+      },
+      "llm_cost": {
+        "openai_api_key_present": true,
+        "offline": false,
+        "prices_usd_per_1m_tokens": {
+          "gpt-4o": {
+            "in": 2.5,
+            "out": 10
+          },
+          "gpt-4o-mini": {
+            "in": 0.15,
+            "out": 0.6
+          }
+        },
+        "usd_per_case_measured": 0.051265,
+        "usd_total_measured": 1.281621,
+        "spend_cap_usd": 3,
+        "meter": {
+          "usd": 1.281622,
+          "cap_usd": 3,
+          "calls": 565,
+          "prompt_tokens": 552008,
+          "completion_tokens": 32314,
+          "by_model": {
+            "gpt-4o": {
+              "calls": 379,
+              "prompt_tokens": 405714,
+              "completion_tokens": 24043,
+              "usd": 1.254715
+            },
+            "gpt-4o-mini": {
+              "calls": 186,
+              "prompt_tokens": 146294,
+              "completion_tokens": 8271,
+              "usd": 0.026907
+            }
+          }
+        },
+        "degraded_to_autopilot": 0,
+        "note": "OPENAI_API_KEY present: $0.0513/case measured across 25 runs — investigator (gpt-4o), challenger/remediation (gpt-4o-mini) and narrator, metered per response in backend/agents/usage.py."
+      },
+      "fixed_budget_note": "fixed always spends 5 counterfactuals + 1 twin"
     }
   },
+  "generated_at": 1784099680.4524262,
   "baselines": {
-    "generated_at": 1700000600.0,
-    "results": [
-      {
-        "name": "random",
-        "skipped": false,
-        "n": 24,
-        "AC@1": 0.0833,
-        "AC@3": 0.25,
-        "Avg@5": 0.1667,
-        "notes": "uniform over components"
-      },
-      {
-        "name": "pagerank-only",
-        "skipped": false,
-        "n": 24,
-        "AC@1": 0.2917,
-        "AC@3": 0.5833,
-        "Avg@5": 0.4083,
-        "notes": "topology prior, no evidence"
-      }
-    ],
-    "skipped": false,
-    "reason": ""
+    "generated_at": 1784082246.8135064,
+    "results": [],
+    "skipped": true,
+    "reason": "nsigma: RCAEval not importable (No module named 'RCAEval'); baro: RCAEval not importable (No module named 'RCAEval')"
   },
-  "redacted": ["truth", "rank_of_truth", "false_blame"]
+  "redacted": [
+    "truth",
+    "rank_of_truth",
+    "false_blame"
+  ]
 }

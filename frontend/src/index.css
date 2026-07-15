@@ -69,4 +69,20 @@
       'rlig' 1,
       'calt' 1;
   }
+
+  /*
+   * Reduced motion. framer-motion is handled by MotionConfig reducedMotion="user"
+   * in App.tsx; this covers everything else — CSS transitions, the skeleton
+   * pulse, the graph's marching dashes fall back to a static line.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

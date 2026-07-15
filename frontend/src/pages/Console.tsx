@@ -6,6 +6,7 @@ import { CaseCard } from '@/components/CaseCard'
 import { RunControls } from '@/components/RunControls'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { DEMO_PRESET, demoButtons } from '@/demo/scenarios'
 
 /**
@@ -50,9 +51,17 @@ export function Console() {
         </div>
 
         {demos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {loading ? 'Loading cases…' : 'No scenario cases in /cases — nothing to demo.'}
-          </p>
+          loading ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {Array.from({ length: 7 }, (_, i) => (
+                <Skeleton key={i} className="h-24" />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No scenario cases in /cases — nothing to demo.
+            </p>
+          )
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {demos.map((demo) => (
@@ -96,7 +105,11 @@ export function Console() {
             </Button>
           </div>
         ) : loading ? (
-          <p className="text-sm text-muted-foreground">Loading cases…</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {cases.map((c) => (

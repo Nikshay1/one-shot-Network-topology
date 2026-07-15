@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { openRunStream } from '@/api/stream'
 import { runStore } from '@/store/runStore'
+import { useToast } from '@/components/Toaster'
 
 export interface UseRunStreamOptions {
   /** null/undefined = don't connect (e.g. no run selected yet). */
@@ -16,6 +17,8 @@ export interface UseRunStreamOptions {
 }
 
 export function useRunStream({ runId, streamPath, debug = false }: UseRunStreamOptions): void {
+  const { toast } = useToast()
+
   useEffect(() => {
     if (!runId) return
 
@@ -34,6 +37,18 @@ export function useRunStream({ runId, streamPath, debug = false }: UseRunStreamO
       onMessage: (msg) => {
         if (debug) console.debug('[verdict] %s', msg.event, msg.data)
         dispatch(msg)
+
+        // A failed pipeline is a toast, never a wall. Rule 11: an agent error,
+        // timeout or budget exhaustion falls back to the deterministic autopilot
+        // and the run still completes — so whatever already rendered stays, and
+        // the presenter keeps going.
+        if (msg.event === 'pipeline_error') {
+          toast({
+            tone: 'error',
+            title: `Pipeline failed at stage ${msg.data.stage}`,
+            detail: msg.data.error,
+          })
+        }
       },
       onStatus: (status, detail) => {
         setConnection(status)
@@ -45,5 +60,5 @@ export function useRunStream({ runId, streamPath, debug = false }: UseRunStreamO
     })
 
     return () => handle.close()
-  }, [runId, streamPath, debug])
+  }, [runId, streamPath, debug, toast])
 }

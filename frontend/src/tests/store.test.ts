@@ -391,16 +391,36 @@ describe('store instance', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('mock sse sequence', () => {
-  it('covers all 15 contract event types across the two recordings', () => {
-    // Deliberately two recordings: a run ends in EITHER pipeline_done OR
+  it('covers all 15 contract event types across the recordings', () => {
+    // Deliberately several recordings: a run ends in EITHER pipeline_done OR
     // pipeline_error and the bus drops anything after a terminal event, so no
-    // single run can legally contain both.
-    const seen = new Set([
-      ...loadMockSseMessages(MOCK_RECORDINGS.happy).map((m) => m.event),
-      ...loadMockSseMessages(MOCK_RECORDINGS.error).map((m) => m.event),
-    ])
+    // single run can legally contain both. challenger_attack lives only in the
+    // red-herring run, because the challenger only ever attacks the rank-1
+    // hypothesis and an upheld attack blocks CONFIRMED (tiers.py:157) — putting
+    // one in the clean-cascade run would contradict its own tier.
+    const seen = new Set(
+      Object.values(MOCK_RECORDINGS).flatMap((raw) =>
+        loadMockSseMessages(raw).map((m) => m.event),
+      ),
+    )
     expect([...SSE_EVENT_NAMES].filter((n) => !seen.has(n))).toEqual([])
     expect(seen.size).toBe(15)
+  })
+
+  it('never emits upheld:false — the backend discards rejected attacks', () => {
+    // challenger.py:103-113 `continue`s past any attack that fails validation
+    // and hardcodes upheld:True on the ones it keeps. A recording containing
+    // upheld:false would be modelling a state the backend cannot produce.
+    for (const raw of Object.values(MOCK_RECORDINGS)) {
+      for (const msg of loadMockSseMessages(raw)) {
+        if (msg.event === 'challenger_attack') expect(msg.data.upheld).toBe(true)
+        if (msg.event === 'hypothesis_ranked') {
+          for (const attack of msg.data.challenger?.attacks ?? []) {
+            expect(attack.upheld).toBe(true)
+          }
+        }
+      }
+    }
   })
 
   it('has exactly one terminal event, last, in each recording', () => {
