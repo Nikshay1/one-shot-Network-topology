@@ -1,16 +1,14 @@
-"""Deterministic-ranking constants (single home for the scorer weights)."""
+"""Deterministic-ranking constants.
+
+The scorer weights moved to backend/rank/weights.py, which owns the vector and
+its invariants (and documents where the numbers came from). They are re-exported
+here because half the codebase already imports them from this module, and a
+weight vector with two homes is a weight vector with two values.
+"""
 
 from __future__ import annotations
 
-# Pre-weight each score component; the weighted contributions are what land in
-# `score_breakdown` and MUST sum to `score`. These sum to 1.0.
-WEIGHTS: dict[str, float] = {
-    "coverage": 0.30,
-    "topo_consistency": 0.25,
-    "precedence": 0.15,
-    "corroboration": 0.15,
-    "pagerank": 0.15,
-}
+from backend.rank.weights import WEIGHTS  # noqa: F401  (re-export; see module docstring)
 
 # Component criticality for blast-impact weighting (front-end is user-facing).
 CRITICALITY_DEFAULT = 0.5

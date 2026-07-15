@@ -1,19 +1,39 @@
 """Deterministic candidate generation (the ranking floor).
 
-Suspects = every blast-subgraph component with >=1 anomaly, plus every target of
-a risky-config anomaly. Each suspect gets a drafted hypothesis: statement,
-trigger event, fault-type guess, and predicted symptoms derived from reversed
-reachability (who depends on the suspect and would therefore show symptoms).
+THE THREE-WAY UNION (rule 18: candidates are generated per incident, inside its
+subgraph; the reachability math in scorer.py then runs on the FULL topology and
+is never clipped at the k-hop boundary):
+
+  1. broken   — every anomalous component in the incident. This is the obvious
+                one and used to be the only one.
+  2. config   — every component targeted by a risky config change in the window,
+                EVEN IF IT HAS NO ANOMALIES. This is how the red herring becomes
+                a scoreable, exonerable hypothesis instead of never being asked
+                about: you cannot clear a suspect you never charged.
+  3. inferred — every non-anomalous component DOWNSTREAM of an anomalous one
+                (nx.descendants). This is the uninstrumented-root-cause case: the
+                thing that broke emits nothing, and the only evidence it exists is
+                that everything above it is on fire.
+
+Each candidate carries a trigger_ts, which is what the scorer's precedence factor
+measures against. It is deliberately different per origin:
+  broken   -> its earliest anomaly
+  config   -> THE CONFIG EVENT'S TIME, not an anomaly time. A config pushed after
+              the symptoms started therefore scores ~0 on precedence, for free.
+  inferred -> the earliest anomaly among the components it could explain.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 import networkx as nx
 
 from backend.localize.blast import BlastSubgraph
 from backend.models import AnomalyEvent
+
+Origin = Literal["anomalous", "config", "inferred"]
 
 # Keyword -> fault_type_guess, checked against the anomaly summary (our detectors
 # embed the metric/name in the summary).
@@ -50,7 +70,20 @@ class Candidate:
     predicted_symptoms: list[dict]
     cited_evidence_ids: list[str]
     suspect_anomalies: list[AnomalyEvent] = field(default_factory=list)
-    from_config_target: bool = False
+    #: Where this candidate came from — drives the statement and the corroboration floor.
+    origin: Origin = "anomalous"
+    #: What precedence is measured against. None when nothing dates the candidate.
+    trigger_ts: float | None = None
+
+    @property
+    def inferred(self) -> bool:
+        return self.origin == "inferred"
+
+    @property
+    def from_config_target(self) -> bool:
+        """Kept for the existing importers: a config target with no anomalies of
+        its own — the red-herring shape."""
+        return self.origin == "config" and not self.suspect_anomalies
 
 
 def _dominant_fault_type(anomalies: list[AnomalyEvent]) -> str:
@@ -99,6 +132,33 @@ def _predicted_symptoms(
     return out
 
 
+def _first_anomaly_ts(anomalies: list[AnomalyEvent]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for a in anomalies:
+        out[a.component_id] = min(out.get(a.component_id, a.window.start), a.window.start)
+    return out
+
+
+def _statement(suspect: str, origin: Origin, fault: str, n_anoms: int, n_up: int) -> str:
+    if origin == "config":
+        return (
+            f"A risky config change on {suspect} lands in the incident window; "
+            f"{n_anoms} anomaly(ies) observed on {suspect} itself, symptoms expected "
+            f"across {n_up} upstream dependent(s)."
+        )
+    if origin == "inferred":
+        return (
+            f"{suspect} emits no anomalies of its own but sits beneath the observed "
+            f"failures; if it is uninstrumented, silence here is not health. "
+            f"Symptoms expected across {n_up} upstream dependent(s)."
+        )
+    return (
+        f"{suspect} is a candidate root cause ({fault}); "
+        f"{n_anoms} anomaly(ies) observed, symptoms expected across "
+        f"{n_up} upstream dependent(s)."
+    )
+
+
 def generate_candidates(
     case_id: str,
     anomalies: list[AnomalyEvent],
@@ -110,34 +170,58 @@ def generate_candidates(
         by_component.setdefault(a.component_id, []).append(a)
 
     anomalous = set(by_component)
+    first_ts = _first_anomaly_ts(anomalies)
 
-    suspects: set[str] = {c for c in blast.nodes if c in by_component}
-    config_targets = {
-        a.component_id for a in anomalies if a.method == "config_risky_flag"
-    }
-    suspects |= config_targets
+    # 1. broken — anomalous components inside the incident.
+    origins: dict[str, Origin] = {c: "anomalous" for c in blast.nodes if c in by_component}
+
+    # 2. config — targets of a risky config change. The config detector raises a
+    #    `config_risky_flag` anomaly on the target, which is what dates it; the
+    #    component is charged whether or not anything else about it looks wrong.
+    for a in anomalies:
+        if a.method == "config_risky_flag":
+            origins[a.component_id] = "config"
+
+    # 3. inferred — non-anomalous components DOWNSTREAM of an anomalous one, i.e.
+    #    things that could be the cause but said nothing. Scoped to the incident's
+    #    subgraph per rule 18 (the reachability math is not).
+    for comp in anomalous:
+        if comp not in topology:
+            continue
+        for below in nx.descendants(topology, comp):
+            if below in anomalous or below in origins:
+                continue
+            if below not in blast.nodes:
+                continue
+            origins[below] = "inferred"
 
     candidates: list[Candidate] = []
-    for suspect in sorted(suspects):
+    for suspect in sorted(origins):
+        origin = origins[suspect]
         anoms = by_component.get(suspect, [])
-        fault = _dominant_fault_type(anoms) if anoms else "config_push"
-        trigger = _trigger_event_id(suspect, anoms)
+        fault = _dominant_fault_type(anoms) if anoms else (
+            "config_push" if origin == "config" else "unknown"
+        )
         symptoms = _predicted_symptoms(suspect, topology, anomalous)
         cited = sorted({e for a in anoms for e in a.evidence_event_ids})
-        n_down = len(nx.ancestors(topology, suspect)) if suspect in topology else 0
-        statement = (
-            f"{suspect} is a candidate root cause ({fault}); "
-            f"{len(anoms)} anomaly(ies) observed, symptoms expected across "
-            f"{n_down} upstream dependent(s)."
-        )
+        n_up = len(nx.ancestors(topology, suspect)) if suspect in topology else 0
+
+        if origin == "inferred":
+            # Dated by the earliest symptom it could explain — the only clock it has.
+            explains = (nx.ancestors(topology, suspect) | {suspect}) & anomalous
+            trigger_ts = min((first_ts[c] for c in explains), default=None)
+        else:
+            trigger_ts = first_ts.get(suspect)
+
         candidates.append(Candidate(
             suspect=suspect,
-            statement=statement,
-            trigger_event_id=trigger,
+            statement=_statement(suspect, origin, fault, len(anoms), n_up),
+            trigger_event_id=_trigger_event_id(suspect, anoms),
             fault_type_guess=fault,
             predicted_symptoms=symptoms,
             cited_evidence_ids=cited,
             suspect_anomalies=anoms,
-            from_config_target=(suspect in config_targets and not anoms),
+            origin=origin,
+            trigger_ts=trigger_ts,
         ))
     return candidates
