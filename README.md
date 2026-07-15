@@ -40,9 +40,10 @@ server, and every data shape is a frozen contract.
 | 8 | Agent harness + Investigator + agentic Challenger | ✅ |
 | 9 | Narrator + Fix-Rehearsal agent + PDF report | ✅ |
 | 10 | Replayer + API/SSE + eval/benchmark + hardening | ✅ |
+| 11 | Live LLM path: real key, spend meter + hard cap, hermetic tests, CORS | ✅ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **262 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–10
+runs **264 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–10
 (~5 min). It is hermetic and free: the key is blanked at the top of the script.
 
 > ### ✅ The LLM path HAS now been run against a real `OPENAI_API_KEY`
@@ -125,7 +126,7 @@ is a true number that tells a false story.
 
 ```bash
 make setup                 # uv venv + editable install
-make golden                # the gate: 262 tests + stage 2-10 end-to-end checks (~5 min, free)
+make golden                # the gate: 264 tests + stage 2-10 end-to-end checks (~5 min, free)
 
 make run                   # serve the API on 127.0.0.1:8000  (contracts/api_contract.md v1.1)
 make demo-list             # the 7 demo scenarios, one per scenario type
@@ -184,6 +185,63 @@ curl -s localhost:8000/run/clean_cascade-01/remediation | python -m json.tool
 an OFFLINE demo can only replay a warmed transcript if the API run uses the same id
 the warm-up did. It also gives `409 on duplicate run` its natural meaning — a run
 for this case is already in flight.
+
+## Building a frontend against this API
+
+Everything here is verified against `backend/api/`, not assumed. The first two will
+cost you an evening each if you don't know them.
+
+**1. Close the EventSource yourself, or it loops forever.** The server ends the stream
+after `pipeline_done`. It sends no `retry:` directive, so the browser does what the SSE
+spec says: waits ~3s and **reconnects**. On reconnect `subscribe()` replays the buffer
+from index 0 — so you get the entire run again, then it ends, then it reconnects… The
+run looks like it restarts by itself.
+
+```js
+const es = new EventSource(`${API}/stream/${runId}`);
+const stop = () => es.close();
+es.addEventListener("pipeline_done", (e) => { render(JSON.parse(e.data)); stop(); });
+es.addEventListener("pipeline_error", (e) => { showError(JSON.parse(e.data)); stop(); });
+es.onerror = () => { /* transport dropped; EventSource retries on its own */ };
+```
+
+**2. Replay-from-zero is a feature — make rendering idempotent.** Any subscriber, at any
+time, gets the full history and then follows live. Attach late, attach after the run
+finished, attach twice — you always see the identical sequence. That's what makes the UI
+un-raceable. The price: **never append blindly.** Key everything by id.
+
+**3. `hypothesis_ranked` is a full-object upsert keyed by `hypothesis_id`.** Re-emits
+replace. A `Map<hypothesis_id, RankedHypothesis>` is your entire verdict state — it
+survives replay and reconnect for free. `tier_changed` only ever comes from the ranking
+stage, so trust it as authoritative rather than recomputing tiers client-side (rule 5:
+tiers are assigned in exactly one place, and it isn't your frontend).
+
+**4. Use `speed=10`.** `speed=0` flushes the whole ingest burst before detection starts,
+so the UI freezes then dumps and `agent_step` never interleaves. `speed=10` replays every
+demo scenario in ~34s. `speed=1` is *not* real-time — see §10.
+
+**5. `run_id == case_id`, and `409` is not an error.** It means a run for that case is
+already in flight — attach to `/stream/{run_id}` rather than surfacing a failure. A
+*finished* run re-runs fine (the 409 only fires while `done == false`).
+
+**6. Two endpoints aren't JSON.** `/run/{id}/agent/{name}/transcript` is
+`application/x-ndjson` — split on newlines and `JSON.parse` each. `/run/{id}/report.pdf`
+is a blob.
+
+**7. Heartbeats are invisible to you.** Every 15s of silence the server emits a comment
+frame (`: heartbeat 15s`). `EventSource` swallows comments, so you'll never see an event
+— it exists to stop proxies closing an idle connection.
+
+**8. `/benchmark` will not tell you the answer.** `truth`, `rank_of_truth` and
+`false_blame` are redacted at the boundary (bug #12); aggregate metrics remain. If you
+want a "was it right?" badge you need the label, and labels are `/eval`-only by rule 4 —
+which is the point.
+
+**CORS** is open by default; narrow it with `VERDICT_CORS_ORIGINS=http://localhost:5173`.
+Credentials are off, so keep it that way while origins are `*`.
+
+The full event and endpoint list is `contracts/api_contract.md` (v1.1) — it is frozen,
+and the API is tested against it.
 
 ## Bugs worth remembering (found and fixed)
 
@@ -497,11 +555,13 @@ backend/
   ledger/               ledger (append-only JSONL evidence)
   twin/                 model · faults · remedies · compare · runner (SimPy)
   agents/               tools (typed registry) · budget · harness · transcript ·
+                        usage (token meter + hard USD cap) ·
                         investigator · challenger · remediation
   narrate/              narrator (citation-bound) · llm · cache
   replayer/             replay (ordered, speed-compressed, deterministic)
   api/                  app (every v1.1 endpoint) · sse (the ordered run bus) ·
                         pdf_report (the audit trail)
+  __init__.py           loads .env (the ONE import every CLI entry point shares)
   main.py               uvicorn entry point  (make run)
   pipeline.py           detect→localize→score→INVESTIGATOR→rescore→CHALLENGER→
                         REMEDIATION→NARRATOR→verdict
@@ -515,9 +575,11 @@ scripts/                golden.sh · harden.sh · demo.sh · fetch_golden_case.s
 docs/re2_ss.md          RE2-SS dataset reference
 data/                   (git-ignored) re2_ss/ parquet/ labels/ anomalies/ drain3/
                         ledger/ transcripts/ cache/ demo/ reports/
-tests/                  contracts · normalize · adapter · overlay · detect · rank ·
-                        tools · counterfactual · scenario2 · twin · harness ·
-                        investigator · challenger · narrate · remediation · api
+tests/                  conftest (strips the API key BEFORE collection — the suite
+                        cannot bill you) · contracts · normalize · adapter · overlay ·
+                        detect · rank · tools · counterfactual · scenario2 · twin ·
+                        harness · investigator · challenger · narrate · remediation ·
+                        api · case_scoping · usage · live_openai (opt-in, --live)
 ```
 
 ## Setup
