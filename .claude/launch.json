@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "verdict-api",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-m", "backend.main", "--host", "127.0.0.1", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "verdict-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
+      "port": 5173
+    }
+  ]
+}
