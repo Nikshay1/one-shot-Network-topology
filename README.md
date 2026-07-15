@@ -61,9 +61,65 @@ runs **262 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–
 > the autopilot per rule 11 rather than crashing.
 >
 > The **agentic-vs-fixed headline is now measured** over the full benchmark ($1.07 of
-> live agent runs, 24 of 25 cases genuinely agentic). It does **not** support the
-> claim this project was built to make — the agent is 3.2× cheaper and materially
-> *less* accurate. See §Reproduce the numbers, which now leads with the refutation.
+> live agent runs, 24 of 25 cases genuinely agentic). As measured it does **not**
+> support the claim this project was built to make — the agent is 3.2× cheaper and
+> materially *less* accurate. But **the comparison is confounded by a budget cap we
+> imposed** (agent 3 cost points, fixed 7), so it does not yet answer the question the
+> pitch asks. That is the one open decision on this project — read
+> **§Open decision** before quoting any of it.
+
+## ⚠️ Open decision — the headline comparison is confounded
+
+**Read this before quoting any agentic-vs-fixed number, including ours.**
+
+The pitch is *equal-or-better accuracy for fewer expensive ops*. The measured result is
+that the agent spends **3.2× less** and scores **33% worse** (precision@1 0.348 vs
+0.522). The obvious reading — "the agent chose to spend less, and it cost it accuracy"
+— **is not what happened**, and the numbers say so:
+
+| | cost points |
+| --- | --- |
+| `run_counterfactual` | 1 each |
+| `run_twin` | 2 |
+| **what the fixed pipeline spends every case** (5 counterfactuals + 1 twin) | **7** |
+| **what the Investigator is allowed to spend, ever** (`Budget(max_cost_points=3)`) | **3** |
+
+The agent is **structurally forbidden from spending what it is being compared against**.
+Not one of the 25 runs exceeded 3 points, because none of them could; 7 hit the ceiling
+exactly (distribution: `{0: 2, 2: 16, 3: 7}`). So "the agent spends 3.2× less" is not a
+finding about agent behaviour — **it is a constraint we imposed, being reported as a
+discovery.**
+
+This is worst exactly where the agent looks worst. `confounded_pair` — agent **0/4** vs
+fixed **3/4** — is the scenario type whose two candidates are separated *only* by the
+exhaustive counterfactual sweep. That sweep costs 5 points. The agent has 3. **It cannot
+afford the evidence that solves the case.** Reading that 0/4 as "the agent reasoned
+badly" is reading a budget as a brain.
+
+Conversely `red_herring_config` (agent **5/5** vs fixed 4/5, for 2.2 ops vs 6.4) is a
+scenario the 3-point budget comfortably fits — and there the claim holds exactly as
+pitched.
+
+### The decision
+
+**Option A — re-run with the budget unbound (recommended).** Set the Investigator's
+`max_cost_points` to 7 so both sides may spend the same, and re-measure. Then "the agent
+spent less" becomes a *choice* and the headline becomes a real result either way: if it
+still spends ~1.5 ops and matches fixed, the pitch is proven; if it spends 7 and wins,
+that's a different (weaker but honest) pitch; if it spends 7 and still loses, that is the
+most useful finding of all. Cost ~$1.10 and ~20 min (`VERDICT_SPEND_CAP_USD=3.00 make bench`).
+Note the 60s wall clock is a second, independent cap — `run_twin` alone can eat it — so
+raise both or you have merely swapped which constraint binds.
+
+**Option B — keep the cap and reframe the pitch.** State plainly that this measures *an
+agent under a deliberate 3-point budget vs an unbudgeted baseline*, and that the finding
+is per-scenario: selectivity wins where evidence is decisive (`red_herring_config`) and
+cannot buy its way out where it is ambiguous (`confounded_pair`). This is defensible and
+costs nothing, but it is answering a smaller question than the one the pitch asks.
+
+**What we did not do: quietly ship the aggregate table.** It is in §Reproduce the numbers
+with this caveat attached, because 0.348-vs-0.522 without the budget asymmetry beside it
+is a true number that tells a false story.
 
 ## Bring-up
 
@@ -112,11 +168,17 @@ knowing before you turn it on:
 A run in 4 lines:
 
 ```bash
-curl -s -X POST localhost:8000/case/clean_cascade-01/run      -H 'content-type: application/json' -d '{"speed":0,"seed":42,"twin_enabled":true}'
+curl -s -X POST localhost:8000/case/clean_cascade-01/run      -H 'content-type: application/json' -d '{"speed":10,"seed":42,"twin_enabled":true}'
 # -> {"run_id":"clean_cascade-01","stream":"/stream/clean_cascade-01"}
 curl -N localhost:8000/stream/clean_cascade-01      # SSE: ingest -> anomalies -> ranking -> agents
 curl -s localhost:8000/run/clean_cascade-01/remediation | python -m json.tool
 ```
+
+> **`speed=10` for anything a human watches; `speed=0` only for eval.** At `speed=0`
+> the whole ingest burst flushes before detection starts, so the UI sits still and then
+> dumps — `agent_step` never interleaves. `speed=10` replays every demo scenario in
+> **~34s**. Note `speed=1` is *not* real-time (a 2s clamp squashes idle gaps) and takes
+> an unpredictable 46–114s depending on the case. See §10 for the measured table.
 
 `run_id == case_id` on purpose: the agent transcript cache is keyed on `run_id`, so
 an OFFLINE demo can only replay a warmed transcript if the API run uses the same id
@@ -731,9 +793,33 @@ but detection only runs once the stream ends: the detectors are batch estimators
 MAD needs the whole baseline, IsolationForest fits over all windows, Drain3 needs the
 full log corpus — so a partial stream would rank differently from the offline
 pipeline. The stream visualizes ingest; the verdict is computed on the complete case.
-A consequence worth knowing before a demo: at `speed=0` the ingest events all flush
-first, so `agent_step` events appear **after** them, not interleaved. Use `speed=10`
-if you want them paced.
+
+#### Picking `speed` for a demo
+
+At `speed=0` every `event_ingested` flushes before detection starts, so `agent_step`
+events arrive **after** the whole ingest burst rather than interleaved with it. That is
+correct (see above) but it looks like a frozen UI followed by a data dump. For a live
+timeline you want the ingest paced.
+
+`speed` divides the original inter-arrival gaps, and any single gap is then clamped to
+`MAX_GAP_S = 2.0` so an idle stretch can never stall a demo. Measured on the demo
+scenarios (each spans 345s of telemetry, ~725–880 events):
+
+| `speed` | replay wall-clock | notes |
+| ------- | ----------------- | ----- |
+| `0` | instant | eval path — batch, no pacing, no timeline |
+| `1` | **46–114s, varies per case** | *not* real-time, and not predictable — see below |
+| `10` | **~34s, every case** | the demo default |
+| `30` | ~11s | for a 3-minute pitch slot |
+
+**`speed=1` is not "real time"** — that's the trap. The 2s clamp squashes every idle
+gap, so a 345s case replays in 54s, and *how much* it squashes depends on how bursty
+that particular case is: `alert_storm-01` takes 114s while `confounded_pair-01` takes
+46s. You get neither honesty nor a predictable slot length.
+
+`speed=10` is the demo default precisely because the clamp stops binding: almost every
+gap is under 2s once divided, so wall-clock collapses to `span/speed` — **~34s for
+every scenario**, which is a number you can rehearse against.
 
 **API** (`app.py`, `sse.py`) implements every v1.1 endpoint. `POST /case/{id}/run`
 returns `202` immediately; a background task runs replay → detect → pipeline,
@@ -840,6 +926,12 @@ The agent buys its 3.2× saving with a **33% relative drop in precision@1**, and
 slower in wall clock (it is waiting on a network; the autopilot is doing arithmetic).
 Cheaper and worse is not the trade the pitch describes.
 
+> **This table is confounded, and the confound is ours — see §Open decision.** The agent
+> is capped at **3 cost points**; the fixed pipeline spends **7** every case. The agent
+> never exceeded 3 in 25 runs because it *cannot*. "Spends 3.2× less" is therefore a
+> constraint we imposed, not a choice the agent made — and the comparison does not yet
+> answer the question the pitch asks.
+
 **But the aggregate hides the real result.** Broken out by scenario type, the agent
 isn't uniformly worse — it is *specifically* better exactly where the case rewards
 reasoning, and *specifically* worse where it rewards brute force:
@@ -864,13 +956,17 @@ So the honest conclusion is not "agents don't work" but **"selectivity is a bet,
 pays exactly where the evidence is decisive and loses where it's ambiguous."** The
 fixed pipeline's stupidity is a form of robustness.
 
-Two caveats that could move these numbers, neither of which is an excuse:
+Two caveats, and the first one is disqualifying rather than mitigating:
 
-- The reasoning agents frequently hit **`budget_exhausted`** (mean 5.96 tool calls,
-  2.12 of 3 cost points, against a 60s wall clock that `run_twin` alone can eat). This
-  measures the agent *under this budget*, not the ceiling. `confounded_pair` needing
-  ~5 counterfactuals cannot fit in 3 cost points — the budget may simply be
-  mis-specified for that scenario type rather than the agent mis-reasoning.
+- **The comparison is confounded and the confound is ours — see §Open decision.** The
+  agent may spend at most **3 cost points**; the fixed pipeline spends **7** on every
+  case. Across 25 runs the agent never once exceeded 3, because it cannot
+  (`{0: 2, 2: 16, 3: 7}` — 7 runs pinned at the ceiling), and it frequently ends
+  `budget_exhausted` (mean 5.96 tool calls, 2.12/3 points, against a 60s wall clock
+  that `run_twin` alone can eat). `confounded_pair` is separated *only* by the 5-point
+  counterfactual sweep, so its 0/4 is the agent unable to **afford** the answer, not
+  unable to find it. Until both sides may spend the same, "the agent spends less" is
+  something we did to it.
 - n=23, one seed. The per-type cells are 2–5 cases each. Directional, not significant.
 
 The **held-out RE2-SS case (n=1)** tells the same story: agentic Avg@5 `0.00` for 1
