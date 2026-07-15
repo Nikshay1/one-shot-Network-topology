@@ -45,34 +45,42 @@ export interface EdgeData {
   inBlast: boolean
 }
 
+/**
+ * Tuned for the LIGHT workspace, matching the reference's topology map: hollow
+ * rings on white, colour carried by the stroke rather than a filled blob. The
+ * previous values were chosen against a near-black panel and are unreadable
+ * here.
+ */
 const COLORS = {
-  node: '#1e293b',
-  nodeBorder: '#334155',
-  text: '#e2e8f0',
-  muted: '#64748b',
-  edge: '#334155',
-  amber: '#fbbf24',
-  red: '#f43f5e',
-  green: '#4ade80',
-  // cyan, not violet: violet now means the MISSING_EVIDENCE tier, and one hue
-  // must not carry two meanings.
-  blast: '#22d3ee',
+  node: '#ffffff',
+  nodeBorder: '#9c938f',
+  text: '#171413',
+  muted: '#a89f9b',
+  edge: '#cfc7c2',
+  amber: '#e08700',
+  red: '#d9202b',
+  green: '#168452',
+  // cyan, not violet: violet means the MISSING_EVIDENCE tier, and one hue must
+  // not carry two meanings.
+  blast: '#0e7490',
 } as const
 
 export const graphStylesheet: cytoscape.StylesheetJson = [
   {
     selector: 'node',
     style: {
+      // Hollow ring on white, like the reference's topology map.
       'background-color': COLORS.node,
       'border-color': COLORS.nodeBorder,
-      'border-width': 1.5,
+      'border-width': 2.5,
       shape: 'data(shape)' as unknown as cytoscape.Css.NodeShape,
       label: 'data(label)',
       color: COLORS.text,
       'font-size': 10,
-      'font-family': 'ui-monospace, monospace',
+      'font-family': "'DM Sans', system-ui, sans-serif",
+      'font-weight': 600,
       'text-valign': 'bottom',
-      'text-margin-y': 5,
+      'text-margin-y': 6,
       width: 34,
       height: 34,
       'transition-property': 'background-color, border-color, border-width, opacity',
@@ -96,8 +104,9 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
   {
     selector: 'node[?anomalous]',
     style: {
-      'background-color': COLORS.amber,
+      'background-color': '#fff8ed',
       'border-color': COLORS.amber,
+      'border-width': 3,
       color: COLORS.text,
     },
   },
@@ -112,10 +121,11 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
     selector: 'node[?suspect]',
     style: {
       'background-color': COLORS.red,
-      'border-color': COLORS.red,
+      'border-color': '#8f1119',
       'border-width': 3,
-      width: 42,
-      height: 42,
+      color: COLORS.red,
+      width: 44,
+      height: 44,
       'font-size': 11,
     },
   },
@@ -124,9 +134,9 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
   {
     selector: 'node[?cleared]',
     style: {
-      'background-color': COLORS.node,
+      'background-color': '#eefaf3',
       'border-color': COLORS.green,
-      'border-width': 2,
+      'border-width': 3,
       color: COLORS.green,
     },
   },

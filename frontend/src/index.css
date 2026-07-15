@@ -1,80 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * PULSEPOINT design language.
+ *
+ * Ported from the reference app (Downloads/TechM): dark chrome top and bottom,
+ * a light cream workspace between them, one red accent, and three typefaces —
+ * DM Sans for UI, DM Mono for anything technical (ids, timestamps, counts),
+ * Playfair Display for the brand and display headings.
+ *
+ * The whole app renders through these tokens, so the palette is decided here
+ * and nowhere else. Tier colours are the exception worth stating: they are the
+ * only colours that carry MEANING rather than style, and they are assigned by
+ * backend/rank/tiers.py — this file only decides what green looks like, never
+ * which hypothesis gets it.
+ */
+
 @layer base {
-  /* Dark is the default and the demo theme; light exists so the app is not
-     unusable on a projector that washes darks out. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* Workspace: cream, not white — the reference's #f5f3f0. */
+    --background: 36 20% 95%;
+    --foreground: 20 10% 9%;
+
+    /* Cards sit white on the cream, with a warm hairline border. */
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 20 10% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 222 47% 11%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 222 47% 11%;
-    --radius: 0.5rem;
+    --popover-foreground: 20 10% 9%;
 
-    --tier-confirmed: 142 71% 45%;
-    --tier-correlated: 38 92% 50%;
-    /* violet — deliberately not the amber of an anomaly nor the grey of "off" */
-    --tier-missing: 262 83% 58%;
-  }
+    /* The one accent. */
+    --primary: 356 74% 49%;
+    --primary-foreground: 0 0% 100%;
 
-  .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
-    --card: 222 44% 9%;
-    --card-foreground: 210 40% 96%;
-    --popover: 222 44% 9%;
-    --popover-foreground: 210 40% 96%;
-    --primary: 210 40% 96%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 96%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 96%;
-    --destructive: 0 63% 45%;
-    --destructive-foreground: 210 40% 96%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 213 27% 84%;
+    --secondary: 30 14% 92%;
+    --secondary-foreground: 20 10% 12%;
+    --muted: 30 14% 93%;
+    --muted-foreground: 20 5% 48%;
+    --accent: 356 74% 96%;
+    --accent-foreground: 356 74% 35%;
+    --destructive: 356 74% 45%;
+    --destructive-foreground: 0 0% 100%;
 
-    --tier-confirmed: 142 69% 58%;
-    --tier-correlated: 38 92% 60%;
-    --tier-missing: 258 90% 74%;
+    --border: 26 13% 85%;
+    --input: 26 13% 85%;
+    --ring: 356 74% 49%;
+    --radius: 0.625rem;
+
+    /* Dark chrome — header, footer, and the graph's night panel. */
+    --chrome: 0 0% 4%;
+    --chrome-foreground: 40 20% 96%;
+    --chrome-border: 20 4% 18%;
+    --chrome-muted: 20 4% 56%;
+
+    /*
+     * Evidence tiers. Tuned for the LIGHT workspace: the dark-theme values were
+     * chosen against #0a0f1a and fail contrast on cream.
+     */
+    --tier-confirmed: 158 72% 30%;
+    --tier-correlated: 32 90% 38%;
+    --tier-missing: 262 60% 48%;
   }
 
   * {
     @apply border-border;
   }
 
+  html {
+    background: hsl(var(--chrome));
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
     font-feature-settings:
       'rlig' 1,
       'calt' 1;
   }
 
-  /*
-   * Reduced motion. framer-motion is handled by MotionConfig reducedMotion="user"
-   * in App.tsx; this covers everything else — CSS transitions, the skeleton
-   * pulse, the graph's marching dashes fall back to a static line.
-   */
+  /* Anything technical reads in mono: ids, timestamps, counts, scores. */
+  .font-mono,
+  code,
+  pre {
+    font-family: 'DM Mono', ui-monospace, monospace;
+  }
+
+  /* Display voice — the brand and page titles. */
+  .font-display {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  h1,
+  h2 {
+    letter-spacing: -0.03em;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -84,5 +110,62 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+@layer components {
+  /*
+   * The workspace texture: diagonal light streaks over cream, and two soft red
+   * washes in opposite corners. Purely decorative — pointer-events are never
+   * captured, and nothing here encodes state.
+   */
+  .workspace-texture {
+    background-color: hsl(var(--background));
+    background-image:
+      linear-gradient(
+        165deg,
+        transparent 0 16%,
+        rgba(193, 30, 40, 0.07) 16.2% 19%,
+        transparent 19.2% 37%,
+        rgba(65, 42, 39, 0.04) 37.2% 40%,
+        transparent 40.2% 57%,
+        rgba(193, 30, 40, 0.055) 57.2% 60%,
+        transparent 60.2%
+      ),
+      radial-gradient(115% 42% at -8% 5%, rgba(207, 27, 38, 0.1) 0 24%, transparent 24.5%),
+      radial-gradient(120% 38% at 100% 96%, rgba(84, 46, 43, 0.06) 0 22%, transparent 22.5%);
+    background-size:
+      100% 380px,
+      100% 430px,
+      100% 400px;
+  }
+
+  /* The same idea for the dark chrome. */
+  .chrome-texture {
+    background-color: hsl(var(--chrome));
+    background-image:
+      linear-gradient(
+        122deg,
+        transparent 0 12%,
+        rgba(209, 30, 42, 0.1) 12.2% 16%,
+        transparent 16.2% 30%,
+        rgba(94, 17, 24, 0.22) 30.2% 34%,
+        transparent 34.2% 48%,
+        rgba(209, 30, 42, 0.08) 48.2% 52%,
+        transparent 52.2%
+      ),
+      radial-gradient(130% 55% at 0% 0%, rgba(196, 29, 40, 0.25) 0 28%, transparent 28.5%);
+    background-size:
+      100% 370px,
+      100% 470px;
+  }
+
+  /* The pressed-block button from the reference, shadow and all. */
+  .btn-block-shadow {
+    box-shadow: 4px 4px 0 rgba(37, 16, 17, 0.9);
+  }
+  .btn-block-shadow:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 rgba(37, 16, 17, 0.9);
   }
 }

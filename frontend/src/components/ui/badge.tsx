@@ -4,16 +4,16 @@ import type { VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none transition-colors',
+  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none transition-colors',
   {
     variants: {
       variant: {
         default: 'border-transparent bg-secondary text-secondary-foreground',
-        outline: 'border-border text-muted-foreground',
-        real: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
-        synthetic: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
-        anomaly: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-        danger: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+        outline: 'border-border bg-white/60 text-muted-foreground',
+        real: 'border-sky-600/25 bg-sky-50 text-sky-700',
+        synthetic: 'border-violet-600/25 bg-violet-50 text-violet-700',
+        anomaly: 'border-amber-600/30 bg-amber-50 text-amber-700',
+        danger: 'border-primary/30 bg-accent text-accent-foreground',
         // Tier colours. The tier itself is assigned by backend/rank/tiers.py —
         // this only paints what arrived.
         CONFIRMED: 'border-tier-confirmed/30 bg-tier-confirmed/10 text-tier-confirmed',

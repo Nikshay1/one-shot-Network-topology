@@ -47,14 +47,23 @@ export default {
           correlated: 'hsl(var(--tier-correlated))',
           missing: 'hsl(var(--tier-missing))',
         },
+        // The dark bands top and bottom, and the graph's night panel.
+        chrome: {
+          DEFAULT: 'hsl(var(--chrome))',
+          foreground: 'hsl(var(--chrome-foreground))',
+          border: 'hsl(var(--chrome-border))',
+          muted: 'hsl(var(--chrome-muted))',
+        },
+      },
+      fontFamily: {
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        mono: ['DM Mono', 'ui-monospace', 'monospace'],
+        display: ['Playfair Display', 'Georgia', 'serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
-      },
-      fontFamily: {
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
     },
   },

@@ -71,12 +71,14 @@ export function Console() {
                 variant="secondary"
                 disabled={firing !== null}
                 onClick={() => void fireDemo(demo.caseId)}
-                className="h-full"
+                // The on-stage targets: red rule, block shadow on hover. They
+                // must read as things you press, not cards you look at.
+                className="h-full border-l-[3px] border-l-primary bg-white transition-transform hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_rgba(37,16,17,.85)]"
               >
-                <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                <span className="font-mono text-[10px] font-medium tracking-widest text-primary">
                   DEMO {demo.n}
                 </span>
-                <span className="text-sm font-semibold">{demo.label}</span>
+                <span className="text-[15px] font-bold tracking-tight">{demo.label}</span>
                 <span className="text-[11px] font-normal leading-snug text-muted-foreground">
                   {demo.blurb}
                 </span>

@@ -55,7 +55,7 @@ test('console → run → incident → verdict → agents → report → benchma
 
   // The stage indicator advances as the mock run streams.
   await expect(page.getByRole('list', { name: 'pipeline stage' })).toBeVisible()
-  await expect(page.locator('header').getByText('done')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('run-status').filter({ hasText: 'done' })).toBeVisible({ timeout: 30_000 })
   await expectNoHorizontalOverflow(page)
 
   // ── Verdict ──────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ test('the red herring falls, and is cleared not called innocent', async ({ page 
   await expect(cards.first()).toBeVisible({ timeout: 20_000 })
 
   // Once the run finishes, the real cause leads and payment is demoted.
-  await expect(page.locator('header').getByText('done')).toBeVisible({ timeout: 40_000 })
+  await expect(page.getByTestId('run-status').filter({ hasText: 'done' })).toBeVisible({ timeout: 40_000 })
   await expect(cards.first()).toHaveAttribute('data-hypothesis-id', 'hyp-catalogue-02')
   await expect(cards.nth(1)).toHaveAttribute('data-hypothesis-id', 'hyp-payment-01')
 
@@ -133,7 +133,7 @@ test('a failed pipeline is a toast, not a wall', async ({ page }) => {
   await expect(page.getByText(/derived from anomaly windows/)).toBeVisible()
   // Amber, not red: the demo continues. Exact, because the run id itself ends
   // in "-error" and would otherwise match the run link beside it.
-  await expect(page.locator('header').getByText('error', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('run-status').filter({ hasText: 'error' })).toBeVisible()
 })
 
 test('demo script deep links are real', async ({ page }) => {

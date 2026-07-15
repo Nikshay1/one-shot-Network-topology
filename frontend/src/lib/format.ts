@@ -52,12 +52,13 @@ export const SOURCE_GLYPH: Record<SourceKind, string> = {
   config: '⚙',
 }
 
+/** Tuned for the light workspace — the 400-weights vanish on cream. */
 export const SOURCE_CLASS: Record<SourceKind, string> = {
-  metric: 'text-sky-400',
-  log: 'text-slate-400',
-  alert: 'text-rose-400',
-  topology: 'text-violet-400',
-  config: 'text-amber-400',
+  metric: 'text-sky-700',
+  log: 'text-stone-500',
+  alert: 'text-rose-600',
+  topology: 'text-violet-700',
+  config: 'text-amber-700',
 }
 
 /** The detector that produced an anomaly, in presenter English. */

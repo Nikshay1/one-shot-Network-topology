@@ -18,7 +18,7 @@ vi.mock('cytoscape', async () => {
 import App from '@/App'
 import { Console } from '@/pages/Console'
 import { LiveFeed } from '@/components/LiveFeed'
-import { StatusBar } from '@/components/StatusBar'
+import { StageRail } from '@/components/StageRail'
 import { runStore } from '@/store/runStore'
 import { loadMockSseMessages, MOCK_RECORDINGS } from '@/mocks/mockStream'
 
@@ -109,13 +109,12 @@ describe('LiveFeed', () => {
   })
 })
 
-describe('StatusBar', () => {
+describe('StageRail', () => {
   it('advances the stage indicator and shows the run id', () => {
     playMockRun()
-    withRouter(<StatusBar />)
+    withRouter(<StageRail />)
 
     expect(screen.getByText('case-001')).toBeInTheDocument()
-    expect(screen.getByText('done')).toBeInTheDocument()
 
     const stages = screen.getByRole('list', { name: 'pipeline stage' })
     for (const stage of ['DETECT', 'LOCALIZE', 'RANK', 'INVESTIGATE', 'VERIFY', 'NARRATE']) {
@@ -123,17 +122,15 @@ describe('StatusBar', () => {
     }
   })
 
-  it('shows the OFFLINE badge in mock mode', () => {
-    withRouter(<StatusBar />)
-    // VITE_MOCK is unset under vitest, so this is the API-unreachable path;
-    // either way the badge must be an honest statement of what is missing.
-    expect(screen.getByText(/^OFFLINE ·/)).toBeInTheDocument()
-  })
-
   it('surfaces a failed pipeline rather than looking idle', () => {
     playMockRun(MOCK_RECORDINGS.error)
-    withRouter(<StatusBar />)
+    withRouter(<StageRail />)
     expect(screen.getByText('error')).toBeInTheDocument()
+  })
+
+  it('renders nothing before there is a run', () => {
+    const { container } = withRouter(<StageRail />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
 

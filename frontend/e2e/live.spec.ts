@@ -39,7 +39,7 @@ test('live backend: console lists real cases and /benchmark redacts', async ({ p
 
   // The health dot must say online — this is also the CORS check: a preflight
   // failure would show OFFLINE · API UNREACHABLE instead.
-  await expect(page.locator('header').getByText('online')).toBeVisible()
+  await expect(page.locator('header').getByText('system live')).toBeVisible()
   await expect(page.getByText(/OFFLINE/)).toHaveCount(0)
 
   // Benchmark, from the real endpoint.
@@ -73,7 +73,7 @@ test('live backend: a real run streams to a verdict', async ({ page }) => {
 
   // Events actually arrive over the real SSE stream.
   await expect(page.getByText(/derived from anomaly windows/)).toBeVisible({ timeout: 60_000 })
-  await expect(page.locator('header').getByText('done', { exact: true })).toBeVisible({
+  await expect(page.getByTestId('run-status').filter({ hasText: 'done' })).toBeVisible({
     timeout: 120_000,
   })
 

@@ -75,16 +75,16 @@ export function Timeline({ onSelectComponent, height = 76 }: TimelineProps) {
         <span className="font-mono">{formatClock(window.end)}</span>
       </div>
 
-      <div className="relative h-10 overflow-hidden rounded border border-border/60 bg-background">
-        {/* Density heat ribbon. */}
+      <div className="relative h-10 overflow-hidden rounded-md border border-border/70 bg-[#faf8f6]">
+        {/* Density heat ribbon — the incident's own accent, kept quiet. */}
         {ribbon.map((b) => (
           <div
             key={b.ts}
-            className="absolute inset-y-0 bg-sky-400"
+            className="absolute inset-y-0 bg-primary"
             style={{
               left: `${b.left}%`,
               width: `${bucketWidth}%`,
-              opacity: 0.12 + b.intensity * 0.55,
+              opacity: 0.06 + b.intensity * 0.3,
             }}
             title={`${b.count} events at ${formatClock(b.ts)}`}
           />
@@ -94,7 +94,7 @@ export function Timeline({ onSelectComponent, height = 76 }: TimelineProps) {
         {anomalies.map((a) => (
           <div
             key={a.anomaly_id}
-            className="absolute inset-y-0 border-l border-amber-400/70 bg-amber-400/20"
+            className="absolute inset-y-0 border-l-2 border-amber-500/80 bg-amber-400/15"
             style={{
               left: `${pct(a.window.start, window.start, window.end)}%`,
               width: `${Math.max(0.3, pct(a.window.end, window.start, window.end) - pct(a.window.start, window.start, window.end))}%`,
@@ -117,8 +117,8 @@ export function Timeline({ onSelectComponent, height = 76 }: TimelineProps) {
                 'absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border transition-transform hover:scale-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 risky
-                  ? 'border-amber-300 bg-amber-400'
-                  : 'border-slate-400 bg-slate-500',
+                  ? 'border-amber-700 bg-amber-500'
+                  : 'border-stone-500 bg-stone-400',
               )}
               style={{ left: `${pct(ev.ts, window.start, window.end)}%` }}
             />
