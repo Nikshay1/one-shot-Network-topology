@@ -1,0 +1,527 @@
+% VERDICT — project documentation
+% Paste straight into Overleaf. Compiles with pdfLaTeX; no exotic packages.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{D9202B}
+\definecolor{ink}{HTML}{171413}
+\definecolor{muted}{HTML}{6B6461}
+\definecolor{paper}{HTML}{F7F5F2}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{paper},
+  frame=single,
+  rulecolor=\color{muted!40},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+  xleftmargin=4pt,
+  framexleftmargin=4pt,
+}
+
+\newtcolorbox{keybox}[1]{
+  colback=paper, colframe=accent!70, boxrule=0.6pt, arc=2pt,
+  left=6pt, right=6pt, top=5pt, bottom=5pt,
+  title={\bfseries #1}, coltitle=white, colbacktitle=accent
+}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{\textbf{VERDICT}\\[0.3em]
+\large A Network Anomaly Root-Cause Assistant\\[0.2em]
+\normalsize\color{muted} How the pipeline actually works, end to end}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+VERDICT takes the noisy telemetry of a microservice system during an incident ---
+metrics, logs, alerts, configuration changes --- and answers one question:
+\emph{which component actually broke?} It does not merely guess. It produces a
+ranked list of hypotheses, each carrying the evidence behind it, an honest label
+saying how strongly that evidence supports it, and a rehearsed fix. The design
+principle running through every stage is that the system should be able to say
+``I don't know'' and say \emph{why}. This document explains what happens inside,
+in plain language, and is candid about the parts that do not work as well as one
+might hope.
+\end{abstract}
+
+\vspace{1em}
+
+\section{The problem, in one page}
+
+When a website breaks, the symptoms are everywhere and the cause is somewhere.
+A database quietly runs out of connections; within seconds the service that
+queries it starts timing out, the service above that returns errors, and the
+user-facing page throws 500s. An engineer's dashboard now shows five red
+services. Four of them are victims. One is the culprit. They all look equally
+sick.
+
+Worse, other things happen at the same time. Somebody pushed a config change two
+minutes ago --- unrelated, but it \emph{looks} guilty because it came first.
+Traffic rose 12\%. A noisy alert fired. Human root-cause analysis is largely the
+work of discarding these.
+
+VERDICT automates that discarding. Its central claim is not ``we can find the
+root cause'' --- lots of systems claim that. It is:
+
+\begin{keybox}{The actual claim}
+Every conclusion is traceable to evidence, every conclusion carries a label
+saying how strong that evidence is, and when the evidence is not strong enough,
+the system says so instead of picking a winner anyway.
+\end{keybox}
+
+\subsection{Why this is hard}
+
+Three reasons, each of which the pipeline attacks directly.
+
+\begin{description}[leftmargin=1.4em, style=nextline]
+  \item[Correlation is not causation.] Everything that broke, broke at roughly
+  the same time. Time alone cannot separate cause from effect.
+  \item[The graph matters, and it points the ``wrong'' way.] If \code{catalogue}
+  calls \code{catalogue-db}, then a failure \emph{in the database} shows up
+  \emph{in the catalogue}. Causes flow \emph{against} the direction of the
+  arrows. Getting this backwards inverts the entire model, silently.
+  \item[Absence of evidence is not evidence of absence.] If a component emits no
+  telemetry, it looks perfectly healthy. The quietest thing on the dashboard may
+  be the thing that is broken.
+\end{description}
+
+\section{The shape of the system}
+
+The pipeline is a sequence of stages. Each one narrows the field, and each one
+writes down \emph{why} in a permanent record called the \textbf{ledger}.
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}r@{\ \ }l@{\ \ }p{9.4cm}@{}}
+\toprule
+\textbf{Stage} & \textbf{Module} & \textbf{What it does} \\
+\midrule
+1 & \code{ingest/}    & Turn four kinds of raw telemetry into one uniform event shape. \\
+2 & \code{detect/}    & Decide what counts as abnormal at all. \\
+3 & \code{localize/}  & Work out the blast radius --- which region of the graph is involved. \\
+4 & \code{rank/}      & Score every plausible suspect and order them. \\
+5 & \code{rank/counterfactual} & Delete a suspect and ask whether the incident still makes sense. \\
+6 & \code{twin/}      & Simulate the fault and check the simulation matches reality. \\
+7 & \code{rank/tiers} & Stamp each hypothesis \textsc{confirmed}, \textsc{correlated}, or \textsc{missing\_evidence}. \\
+8 & \code{agents/}    & Optionally, an LLM investigates, attacks its own answer, and rehearses a fix. \\
+9 & \code{narrate/}   & Write the report, where every claim must cite a ledger fact. \\
+10 & \code{api/}      & Stream the whole thing to a browser as it happens. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{The edge convention (the most important paragraph here)}
+
+An edge $A \rightarrow B$ means ``$A$ calls $B$''. Therefore:
+
+\begin{align}
+  \text{symptoms that suspect } S \text{ explains} &= \operatorname{ancestors}(G, S) \cup \{S\} \\
+  \text{possible causes of a sick } X &= \operatorname{descendants}(G, X) \cup \{X\}
+\end{align}
+
+Read that twice. If \code{catalogue-db} breaks, the things that \emph{show}
+symptoms are its ancestors: \code{catalogue}, then \code{front-end}. The cause
+is \emph{below}; the pain is \emph{above}.
+
+This is so easy to invert --- and an inversion is so quiet, producing plausible
+but exactly wrong answers --- that the repository contains a test whose only job
+is to scream if anyone ever flips it (\code{tests/test\_convention.py}). It
+checks the convention against \code{networkx} and against the live scorer, on the
+grounds that a docstring cannot be executed.
+
+\section{Stage by stage}
+
+\subsection{Ingest: making four things look like one thing}
+
+Metrics, logs, alerts and config changes arrive in different shapes from
+different systems. Everything is normalised into one \code{EventEnvelope}:
+who (\code{component\_id}), when (\code{ts}), what kind (\code{source}), and a
+payload specific to the kind.
+
+One rule matters more than it sounds: \textbf{component names are normalised in
+exactly one place}. Real telemetry names the same service five ways
+(\code{catalogue}, \code{catalogue-7d9f}, \code{catalogue.prod}, and so on). If
+two stages disagree about what a component is called, the graph silently
+develops holes. So one function owns it, and nothing else is allowed to clean up
+a name by hand.
+
+\subsection{Detect: what counts as broken?}
+
+Four detectors, one per modality:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}ll p{7.6cm}@{}}
+\toprule
+\textbf{Modality} & \textbf{Method} & \textbf{Idea} \\
+\midrule
+metric & \code{mad\_zscore} & How many robust standard deviations from this metric's own baseline? \\
+metric & \code{isolation\_forest} & Does this combination of metrics look unlike normal, even if each is individually fine? \\
+log    & \code{log\_freq\_spike} & Is a message template suddenly appearing far more often? \\
+log    & \code{log\_rare\_template} & Did a message appear that almost never appears? \\
+alert  & \code{alert\_dedup} & Collapse an alert storm into one signal. \\
+config & \code{config\_risky\_flag} & Did someone change something dangerous, like a connection-pool size? \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A component is only called anomalous if it clears an \emph{aggregation gate}:
+two independent signals, or one severe one. This is what stops a single twitchy
+metric from nominating a suspect.
+
+\subsection{Localize: the blast radius}
+
+Given the sick components, the system takes a $k$-hop neighbourhood around them
+--- the region of the graph the incident could plausibly live in. Everything
+outside is ignored, which keeps the search small and the scoring fair.
+
+\subsection{Rank: five questions about every suspect}
+
+Every component that could be the cause gets scored on five factors, each
+between 0 and 1. Let $A$ be the set of anomalous components, and let
+$R(S) = \operatorname{ancestors}(G,S) \cup \{S\}$ be everything suspect $S$
+could break. Then $E(S) = R(S) \cap A$ is what $S$ actually explains.
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}l l p{6.9cm}@{}}
+\toprule
+\textbf{Factor} & \textbf{Roughly} & \textbf{The question it asks} \\
+\midrule
+coverage       & $|E(S)| / |A|$ & Of everything that broke, how much does $S$ explain? \\
+topo\_consistency & (see \S\ref{sec:known}) & Does the damage match the shape of the graph? \\
+precedence     & $1 - \text{viol}/|E(S)|$ & Did $S$ break \emph{before} its supposed victims? An effect cannot precede its cause. \\
+corroboration  & $|\text{modalities}|/4$ & Do several \emph{different kinds} of signal agree? \\
+pagerank       & $\mathrm{PPR}(S)/\max \mathrm{PPR}$ & Is $S$ structurally central to the sick region? \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The five are combined with weights that sum to $1$, giving a score in $[0,1]$.
+
+\begin{keybox}{The arithmetic contract}
+The weighted contributions are what ship to the frontend, and they must
+\emph{sum to the score} (within $10^{-6}$). This is not decoration: it means the
+displayed bar chart is the score, not an illustration of it. The invariant is
+enforced in code and asserted in tests, because JSON Schema cannot express it.
+\end{keybox}
+
+The weights live in one file and are tuned \emph{only} on a development split of
+the data, by one script, which writes its grid search to
+\code{eval/tuning\_log.json}. Held-out cases are never touched during tuning.
+This is what makes the reported accuracy meaningful rather than self-congratulatory.
+
+\subsection{Counterfactual: the idea that makes it work}
+
+Scoring alone cannot separate a cause from a coincidence. So the system performs
+an experiment:
+
+\begin{keybox}{Remove the suspect and see if the story still holds}
+Take suspect $S$ out of the graph. Ask: can the \emph{remaining} suspects still
+explain the anomalies? If yes, $S$ was never necessary --- it is
+\textbf{redundant}, and its score is halved. If no, $S$ is \textbf{load-bearing}
+--- the incident does not make sense without it.
+\end{keybox}
+
+Concretely: ``removing \code{payment} still leaves 100\% of anomalies explained''
+means \code{payment} is doing no explanatory work. ``Removing \code{catalogue}
+leaves only 25\% explained'' means \code{catalogue} is carrying the incident.
+The threshold is 70\%. This single mechanism is what defeats the red herring, and
+it is the reason the system can \emph{clear} a suspect rather than merely
+ranking it lower.
+
+Note the careful wording. The system says \textbf{counterfactual-unchanged}. It
+never says \textbf{innocent} --- innocence is ground truth, and ground truth is
+reserved for offline evaluation only. Confusing ``we tested it and it did no
+work'' with ``it is innocent'' would be exactly the overclaim the project exists
+to avoid.
+
+\subsection{The twin: simulate it and see}
+
+VERDICT contains a small discrete-event simulation (SimPy) of the service graph.
+It injects the hypothesised fault into the simulation, runs it, and compares the
+resulting pattern of latency/error deltas against what really happened, using
+cosine similarity.
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Similarity} & \textbf{Verdict} & \textbf{Meaning} \\
+\midrule
+$\geq 0.80$ & \textsc{match}    & Simulating this fault reproduces the incident. \\
+$\geq 0.50$ & \textsc{partial}  & It reproduces some of it. \\
+$< 0.50$    & \textsc{mismatch} & Simulating this fault produces a different incident. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The twin also reports \textbf{missing evidence}: components where the simulation
+predicted a symptom but reality has no instrumentation to confirm it. That is a
+list of things worth wiring up before the next outage.
+
+\subsection{Tiers: the honest label}
+
+This is the heart of the product. Each hypothesis is stamped with one of three
+labels, by exactly one piece of code, using four conditions:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}l p{10.2cm}@{}}
+\toprule
+\textbf{Tier} & \textbf{Awarded when} \\
+\midrule
+\textsc{confirmed} & \emph{All four} hold: cited evidence resolves; a topology path
+connects the suspect to every observed symptom; temporal precedence holds; and the
+twin verdict is \textsc{match}. And no predicted symptom sits on an uninstrumented
+component. \\
+\textsc{correlated} & Otherwise, if the suspect co-occurs with the symptoms. The
+label carries a reason naming exactly which condition blocked confirmation. \\
+\textsc{missing\_evidence} & Otherwise --- or, short-circuiting everything above,
+whenever a predicted symptom lands on a component with no telemetry. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two things deserve emphasis.
+
+First, \textbf{the uninstrumented check runs first and overrides everything}. A
+suspect with a perfect twin match still lands in \textsc{missing\_evidence} if
+one of its predicted symptoms is on a blind component. The system refuses to
+claim confirmation it cannot support.
+
+Second, the tier comes with its own explanation in the backend's own words ---
+for example, \emph{``\textsc{correlated}: co-occurring, but confirmation blocked
+by twin partial''}. The interface displays that sentence verbatim rather than
+paraphrasing it.
+
+\subsection{Agents: bounded, optional, and measured}
+
+Optionally, three LLM agents participate:
+
+\begin{description}[leftmargin=1.4em, style=nextline]
+  \item[Investigator] Chooses which expensive checks to buy, then files findings.
+  \item[Challenger] Attacks the top hypothesis, trying to break it. An attack only
+  stands if its cited event \emph{resolves} and \emph{pertains} --- same component,
+  upstream of it, or inside one of its anomaly windows.
+  \item[Fix-Rehearsal] Proposes remedies and rehearses each in the twin.
+\end{description}
+
+Three design rules make this safe:
+
+\begin{enumerate}[leftmargin=1.6em]
+  \item \textbf{Agents cannot mutate anything except by appending a fact to the
+  ledger.} Every other tool is read-only or sandboxed.
+  \item \textbf{Budgets are enforced in code, not in the prompt.} The investigator
+  gets 16 tool calls, 7 ``cost points'', 180 seconds. A twin costs 2 points, a
+  counterfactual 1, a rehearsal 1; everything else is free. Asking a model nicely
+  to be frugal is not a budget; a counter that raises is.
+  \item \textbf{If any agent fails, times out, or exhausts its budget, a
+  deterministic autopilot takes over and the run still completes.} The agents are
+  an enhancement, never a dependency.
+\end{enumerate}
+
+\begin{keybox}{The uncomfortable measurement}
+On the synthetic suite, the agentic path scores \textbf{precision@1 $= 0.39$}
+against the deterministic autopilot's \textbf{$0.52$}. On these cases the LLM
+makes the answer \emph{worse}. The project measures this and reports it rather
+than quietly disabling the comparison --- which is, arguably, the most useful
+result in the whole evaluation.
+\end{keybox}
+
+\subsection{Narration: every claim cites a fact}
+
+The report is generated with one tool available to it: a query against the
+ledger. It cannot cite an event id, because it never sees an event --- the ledger
+is its entire world.
+
+Then the citations are validated. If a claim cites a fact that does not resolve,
+\textbf{the whole line is deleted} from the report. Not flagged --- deleted. The
+model gets one retry with the violation quoted back to it.
+
+There is a real asymmetry here worth knowing: a line with \emph{no} citation
+passes through untouched. The mechanism polices citations that are present and
+wrong; it does not force every sentence to be cited.
+
+\section{What the interface shows}
+
+The frontend is a single-page React application that consumes the API and
+nothing else. It renders, live over a streaming connection:
+
+\begin{itemize}[leftmargin=1.4em]
+  \item the dependency graph, lighting up as events arrive --- amber for
+  anomalous, red for the leading suspect, a green ring for a component the
+  counterfactual cleared, and \emph{hollow dashed} for a component with no
+  telemetry;
+  \item the ranked hypotheses, re-ordering themselves live as the backend
+  rescores --- this is where you watch the red herring fall;
+  \item the agent transcripts with the budget meter filling;
+  \item the report, where every citation chip resolves to its fact on hover;
+  \item the benchmark.
+\end{itemize}
+
+\begin{keybox}{One rule governs the entire interface}
+The frontend never computes a tier, a score, or a rank. It renders exactly what
+the backend sent. Where the interface needs something the API does not provide,
+it says so on screen rather than inventing it.
+\end{keybox}
+
+\section{How it is evaluated}
+
+Cases are split into \textbf{dev} (for tuning) and \textbf{held-out} (for
+reporting), and the tuner is forbidden from looking at held-out. Twenty-five
+synthetic scenarios span seven types:
+\code{clean\_cascade}, \code{red\_herring\_config}, \code{alert\_storm},
+\code{confounded\_pair}, \code{missing\_telemetry}, \code{topology\_drift},
+\code{ambiguous}. Real cases come from the RE2-SS dataset.
+
+Reported metrics: \textbf{AC@1} and \textbf{AC@3} (was the true cause ranked
+first / in the top three), \textbf{false-blame rate} (how often a red herring got
+blamed), \textbf{median time-to-RCA}, and an efficiency table (tool calls, cost
+points, wall clock).
+
+Crucially, the benchmark also runs \textbf{ablations}: the same pipeline with the
+counterfactual removed, with the twin removed, with topology removed. This is how
+one distinguishes ``the system works'' from ``one part of the system works and
+the rest is decoration''.
+
+\begin{keybox}{Ground truth never leaves the evaluator}
+The \code{/benchmark} endpoint strips \code{truth}, \code{rank\_of\_truth} and
+\code{false\_blame} from every individual run before serving it. Aggregate rates
+survive, because they are computed \emph{from} ground truth but disclose it for
+no individual case. There is deliberately no ``was it right?'' badge in the
+interface: the answer key is not served.
+\end{keybox}
+
+\section{Known weaknesses and open problems}
+\label{sec:known}
+
+A documentation section that lists only strengths is marketing. These are real.
+
+\begin{description}[leftmargin=1.4em, style=nextline]
+
+  \item[The topology factor measures the wrong thing.] \code{topo\_consistency}
+  is currently $|A \cap R(S)| / |A|$ --- which is \emph{recall}, nearly a
+  duplicate of \code{coverage}. It cannot penalise a ``god node'' that reaches
+  everything, because reaching more only ever helps it. The intended fix is
+  \emph{precision}, $|E(S)| / |R(S) \cap \text{incident}|$: of everything the
+  suspect could have broken, how much actually broke? An implementation of this
+  exists on a branch and is \textbf{not merged}, because swapping the factor
+  changes what it means and thereby invalidates the weight vector tuned against
+  the old one --- it regresses the red-herring cases until the weights are
+  re-tuned on dev. This is a live piece of work, not a settled design.
+
+  \item[The agentic path underperforms the autopilot.] See above: 0.39 versus
+  0.52. The LLM's value in this system is currently explanation and challenge,
+  not accuracy.
+
+  \item[Held-out is tiny.] The held-out suite has $n=1$ in places. A single case
+  is an anecdote, not a rate, and the interface labels it as such rather than
+  printing a confident-looking percentage.
+
+  \item[The narration stream cannot be reassembled.] The backend chunks the
+  report with \code{text.split("\textbackslash n\textbackslash n")} and emits the
+  pieces --- dropping the separator. Concatenating the chunks glues every heading
+  onto the previous paragraph. The frontend compensates by re-joining on a blank
+  line, which is exact today, but the correct fix is one line in the backend.
+
+  \item[Budget limits are not served.] The code that enforces budgets can report
+  its own state, and nothing calls it. The interface's budget meter reconstructs
+  spend by counting events and mirroring the cost table from source --- honest,
+  but it will drift silently if the backend's costs change.
+
+  \item[Several ledger fact kinds are never written.] Six of the twelve declared
+  kinds have no production writer; they exist only if an LLM files one. Anything
+  built on their presence is building on sand.
+
+  \item[Baselines do not run.] The external comparison library is not importable
+  in this environment, so the baseline row is empty. The evaluator records the
+  reason rather than pretending.
+\end{description}
+
+\section{Design principles, extracted}
+
+If the project has a thesis, it is these.
+
+\begin{enumerate}[leftmargin=1.6em]
+  \item \textbf{One writer per fact.} Tiers are assigned in exactly one file.
+  Component names are normalised in exactly one function. Weights live in exactly
+  one vector. Anything with two homes has two values.
+
+  \item \textbf{Enforce in code, not in prose.} A budget in a prompt is a
+  suggestion. A budget in a counter that raises is a budget.
+
+  \item \textbf{Absence of evidence must be representable.} A predicted symptom
+  on an uninstrumented component is recorded as \code{observed: null} --- neither
+  true nor false --- and that alone blocks confirmation.
+
+  \item \textbf{Measure the thing you are proud of, and publish it when it
+  loses.} The ablations and the agentic-versus-fixed comparison exist to be able
+  to say ``this part is not pulling its weight''.
+
+  \item \textbf{Degrade honestly.} Agent fails $\rightarrow$ autopilot completes
+  the run. Citation does not resolve $\rightarrow$ the claim is deleted. No
+  telemetry $\rightarrow$ the tier drops and the report says what to instrument.
+  At no point does the system fill a gap with a guess.
+\end{enumerate}
+
+\section{Running it}
+
+\begin{lstlisting}[language=bash]
+# Backend (offline: replays cached agent transcripts, makes zero API calls)
+OFFLINE=1 OPENAI_API_KEY= py -m backend.main --port 8000
+
+# Frontend against that backend
+cd frontend && VITE_MOCK=0 VITE_API_BASE=http://127.0.0.1:8000 npm run dev
+
+# Frontend alone, on recorded fixtures (no backend required)
+cd frontend && VITE_MOCK=1 npm run dev
+
+# One demo scenario, end to end (resets the run's ledger, asserts warm caches)
+OFFLINE=1 make demo-2
+
+# The gate everything must pass
+make golden
+\end{lstlisting}
+
+\begin{keybox}{A note on \code{speed}}
+Use \code{speed=10} for anything a human watches: roughly 34 seconds per
+scenario. \code{speed=0} flushes the entire ingest burst before detection
+starts, so the interface sits still and then dumps everything at once, and the
+agent steps never interleave. It exists for evaluation, not for demonstration.
+\end{keybox}
+
+\section{Closing}
+
+The interesting thing about VERDICT is not that it identifies root causes.
+It is the machinery around the answer: an experiment that can clear a suspect,
+a simulation that can fail to reproduce a claim, a tier that refuses to say
+\textsc{confirmed}, a report that deletes its own unsupported sentences, and a
+benchmark that publishes the case where the clever component loses to the simple
+one.
+
+Any system can produce an answer. The work here is in producing an answer that
+tells you how much to trust it.
+
+\end{document}
