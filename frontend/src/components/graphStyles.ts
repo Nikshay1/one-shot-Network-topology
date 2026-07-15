@@ -72,17 +72,24 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
       // Hollow ring on white, like the reference's topology map.
       'background-color': COLORS.node,
       'border-color': COLORS.nodeBorder,
-      'border-width': 2.5,
+      'border-width': 2,
       shape: 'data(shape)' as unknown as cytoscape.Css.NodeShape,
       label: 'data(label)',
       color: COLORS.text,
-      'font-size': 10,
+      'font-size': 9,
       'font-family': "'DM Sans', system-ui, sans-serif",
       'font-weight': 600,
       'text-valign': 'bottom',
-      'text-margin-y': 6,
-      width: 34,
-      height: 34,
+      'text-margin-y': 5,
+      // Labels sit over edges in a dense graph; a paper-coloured plate behind
+      // each one keeps it readable without hiding the link underneath.
+      'text-background-color': '#ffffff',
+      'text-background-opacity': 0.92,
+      // cytoscape types this as a CSS length string, not a number.
+      'text-background-padding': '2px',
+      'text-background-shape': 'roundrectangle',
+      width: 26,
+      height: 26,
       'transition-property': 'background-color, border-color, border-width, opacity',
       'transition-duration': 220,
     },
@@ -146,13 +153,18 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
   {
     selector: 'edge',
     style: {
-      width: 1.2,
+      width: 1,
       'line-color': COLORS.edge,
       'target-arrow-color': COLORS.edge,
       'target-arrow-shape': 'triangle',
-      'arrow-scale': 0.7,
-      'curve-style': 'bezier',
-      opacity: 0.55,
+      'arrow-scale': 0.6,
+      // Orthogonal segments read as a wiring diagram rather than a bowl of
+      // spaghetti, and dagre's layered ranks give them clean channels to run in.
+      'curve-style': 'taxi',
+      'taxi-direction': 'downward',
+      'taxi-turn': 22,
+      'taxi-turn-min-distance': 8,
+      opacity: 0.45,
       'transition-property': 'line-color, width, opacity',
       'transition-duration': 220,
     },
@@ -182,21 +194,34 @@ export const graphStylesheet: cytoscape.StylesheetJson = [
 ]
 
 /**
- * breadthfirst rooted at the entry points (nodes nothing calls), which puts
- * `loadgenerator`/`front-end` at the top and databases at the bottom — the
- * shape an SRE expects. dagre would be prettier but is another dependency.
+ * dagre, top-to-bottom.
+ *
+ * breadthfirst was here first and it could not cope: sock-shop is not a tree —
+ * `orders` calls `carts` and `user`, `front-end` calls `user` — and breadthfirst
+ * makes no attempt to minimise edge crossings, so those back-links flew across
+ * the whole canvas and landed on top of the labels. dagre does layered
+ * assignment with crossing reduction, which is exactly this problem, and it
+ * needs no per-component knowledge (so a real case with a different roster still
+ * lays out cleanly).
+ *
+ * rankDir TB puts callers above callees: loadgenerator on top, databases at the
+ * bottom, failure travelling upward — the shape an SRE expects.
  */
-export function graphLayout(roots: string[]): cytoscape.LayoutOptions {
+export function graphLayout(): cytoscape.LayoutOptions {
   return {
-    name: 'breadthfirst',
-    directed: true,
-    padding: 24,
-    spacingFactor: 1.15,
-    avoidOverlap: true,
-    grid: false,
-    ...(roots.length ? { roots } : {}),
+    name: 'dagre',
+    rankDir: 'TB',
+    // The card is much wider than it is tall, so the fit is height-bound:
+    // spreading siblings horizontally uses that width instead of scaling the
+    // whole graph down into a narrow column.
+    nodeSep: 48,
+    rankSep: 58,
+    edgeSep: 14,
+    ranker: 'network-simplex',
+    padding: 28,
     animate: false,
-  } as cytoscape.LayoutOptions
+    fit: true,
+  } as unknown as cytoscape.LayoutOptions
 }
 
 /** Cosmetic shape from the id. The API has no service_type — see types/api.ts. */

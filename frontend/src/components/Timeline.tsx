@@ -75,29 +75,37 @@ export function Timeline({ onSelectComponent, height = 76 }: TimelineProps) {
         <span className="font-mono">{formatClock(window.end)}</span>
       </div>
 
+      {/*
+        Two tracks, not one overlay. Anomaly windows are wide and overlapping —
+        painted full-height they swallowed the density bars and the whole strip
+        turned into an amber smear. Density gets the tall track; anomalies get a
+        thin band beneath it, where their extent is still readable.
+      */}
       <div className="relative h-10 overflow-hidden rounded-md border border-border/70 bg-[#faf8f6]">
-        {/* Density heat ribbon — the incident's own accent, kept quiet. */}
+        {/* Event density — bars from the floor, so height means volume. */}
         {ribbon.map((b) => (
           <div
             key={b.ts}
-            className="absolute inset-y-0 bg-primary"
+            className="absolute bottom-2.5 bg-primary/70"
             style={{
               left: `${b.left}%`,
               width: `${bucketWidth}%`,
-              opacity: 0.06 + b.intensity * 0.3,
+              height: `${18 + b.intensity * 60}%`,
+              opacity: 0.35 + b.intensity * 0.5,
             }}
             title={`${b.count} events at ${formatClock(b.ts)}`}
           />
         ))}
 
-        {/* Anomaly markers: the window they cover, plus a tick at the start. */}
+        {/* Anomaly windows — their own track along the bottom. */}
+        <div className="absolute inset-x-0 bottom-0 h-2.5 border-t border-border/60 bg-white/60" />
         {anomalies.map((a) => (
           <div
             key={a.anomaly_id}
-            className="absolute inset-y-0 border-l-2 border-amber-500/80 bg-amber-400/15"
+            className="absolute bottom-0 h-2.5 rounded-sm bg-amber-500/70"
             style={{
               left: `${pct(a.window.start, window.start, window.end)}%`,
-              width: `${Math.max(0.3, pct(a.window.end, window.start, window.end) - pct(a.window.start, window.start, window.end))}%`,
+              width: `${Math.max(0.4, pct(a.window.end, window.start, window.end) - pct(a.window.start, window.start, window.end))}%`,
             }}
             title={`${a.component_id}: ${a.summary}`}
           />
@@ -114,11 +122,9 @@ export function Timeline({ onSelectComponent, height = 76 }: TimelineProps) {
               title={`${ev.component_id} · ${summarizePayload(ev.payload)}`}
               aria-label={`config change on ${ev.component_id}: ${summarizePayload(ev.payload)}`}
               className={cn(
-                'absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border transition-transform hover:scale-150',
+                'absolute top-2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border transition-transform hover:scale-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                risky
-                  ? 'border-amber-700 bg-amber-500'
-                  : 'border-stone-500 bg-stone-400',
+                risky ? 'border-amber-700 bg-amber-400' : 'border-stone-500 bg-stone-300',
               )}
               style={{ left: `${pct(ev.ts, window.start, window.end)}%` }}
             />

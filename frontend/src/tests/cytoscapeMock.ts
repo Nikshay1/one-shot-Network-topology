@@ -87,7 +87,7 @@ interface CyOptions {
 }
 
 export function makeCytoscapeMock() {
-  return function cytoscape(options: CyOptions): FakeCy {
+  function cytoscape(options: CyOptions): FakeCy {
     const nodes = options.elements.nodes.map((n) => makeElement(n.data))
     const edges = options.elements.edges.map((e) => makeElement(e.data))
     const handlers = new Map<string, (ev: { target: unknown }) => void>()
@@ -115,6 +115,13 @@ export function makeCytoscapeMock() {
     lastCy = cy
     return cy
   }
+
+  // TopologyGraph registers the dagre layout with cytoscape.use() at module
+  // load. The mock never lays anything out — positions are meaningless without
+  // a renderer — so this only has to exist.
+  cytoscape.use = () => {}
+
+  return cytoscape
 }
 
 /** Read a node's paint data after a render. */

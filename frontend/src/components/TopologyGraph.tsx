@@ -9,11 +9,16 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import cytoscape from 'cytoscape'
+import dagre from 'cytoscape-dagre'
 import {
   graphLayout,
   graphStylesheet,
   shapeFor,
 } from './graphStyles'
+
+// Registered once at module load. cytoscape.use() is idempotent for the same
+// extension, but calling it per-mount would warn on every remount.
+cytoscape.use(dagre)
 import type { EdgeData, NodeData } from './graphStyles'
 import {
   useAnomalousComponents,
@@ -126,9 +131,7 @@ export function TopologyGraph({ topology, selected, onSelect }: TopologyGraphPro
       wheelSensitivity: 0.2,
     })
 
-    // Roots = nodes nobody calls (loadgenerator), so the graph reads top-down.
-    const roots = topology.nodes.map((n) => n.id).filter((id) => !index.in.get(id)?.length)
-    cy.layout(graphLayout(roots)).run()
+    cy.layout(graphLayout()).run()
 
     cy.on('tap', 'node', (ev) => onSelectRef.current(ev.target.id() as ComponentId))
     cy.on('tap', (ev) => {

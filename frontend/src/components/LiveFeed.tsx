@@ -101,13 +101,22 @@ function AnomalyRail({ anomalies }: { anomalies: AnomalyEvent[] }) {
   )
 }
 
+export interface LiveFeedProps {
+  /**
+   * 'split' shows the feed beside a dedicated anomalies rail; 'rail' shows the
+   * feed alone, which is enough because anomalies are already interleaved into
+   * it in amber — that is what the reference's "Incident Live Feed" card is.
+   */
+  layout?: 'split' | 'rail'
+}
+
 /**
  * The "something is happening" view: a virtualized tail of the run bus.
  *
  * The store keeps only the last 500 arrivals, so this never renders a real run's
  * ~186k events — it is a tail, and the counter above it is the honest total.
  */
-export function LiveFeed() {
+export function LiveFeed({ layout = 'split' }: LiveFeedProps = {}) {
   const feed = useFeed()
   const anomalies = useAnomalies()
   const eventsSeen = useRunStore((s) => s.eventsSeen)
@@ -141,7 +150,7 @@ export function LiveFeed() {
 
   return (
     <div className="flex min-h-0 flex-1 gap-4">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-border bg-card">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Incident feed
@@ -188,7 +197,7 @@ export function LiveFeed() {
         </div>
       </section>
 
-      <AnomalyRail anomalies={anomalies} />
+      {layout === 'split' && <AnomalyRail anomalies={anomalies} />}
     </div>
   )
 }
