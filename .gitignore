@@ -25,6 +25,12 @@ data/*.parquet
 dist/
 build/
 .DS_Store
+# vitest's run cache. Machine-local and regenerated every run, so it only ever
+# churns the diff — and it caches PASS/FAIL, so committing it would have shipped a
+# `store.test.ts: failed` left over from a sabotage check as if it were a fact.
+.vite/
+frontend/.vite/
+frontend/test-results/
 data/transcripts/
 data/reports/
 data/cache/
