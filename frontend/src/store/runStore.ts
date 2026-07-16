@@ -449,8 +449,130 @@ export function applySseMessage(state: RunState, msg: SseMessage): RunState {
   }
 }
 
+/**
+ * Mutating twin of the `event_ingested` case above, for the batch path ONLY.
+ *
+ * `draft`'s hot buffers must already be private copies (see applySseMessages). This
+ * exists because the pure reducer copies four Maps per event, which is fine at one
+ * event per commit and ruinous in a burst: the real RE2-SS case pushes 10,328 events
+ * (the 2,000 stream cap plus an 8,328-event cited-evidence flush), and copying a
+ * 500-entry Map 10,328 times froze the tab for 2.4s at a stretch — measured, not
+ * feared.
+ *
+ * It duplicates the rule above, which is a genuine hazard: two implementations of one
+ * behaviour drift. `dispatchMany > lands the same state as dispatching one at a time`
+ * is what keeps them honest — it replays a recording through both paths and compares
+ * the resulting state. Change one of these and you must change the other, or that test
+ * goes red.
+ */
+function ingestMut(draft: RunState, ev: EventEnvelope, owned: Set<string>): void {
+  const bucket = Math.floor(ev.ts / DENSITY_BUCKET_S)
+  draft.density.set(bucket, (draft.density.get(bucket) ?? 0) + 1)
+
+  pushCappedMut(draft.events, ev.event_id, ev, EVENT_BUFFER_LIMIT)
+  pushCappedMut(draft.feed, `event:${ev.event_id}`, { kind: 'event', event: ev }, FEED_BUFFER_LIMIT)
+
+  if (ev.payload.kind === 'metric') pushMetricPointMut(draft.metricSeries, ev, ev.payload, owned)
+  // Rare enough to stay copy-on-write rather than earn its own private copy.
+  if (ev.payload.kind === 'config') {
+    draft.configChanges = new Map(draft.configChanges).set(ev.event_id, ev)
+  }
+
+  draft.status = streaming(draft.status)
+  draft.tsMin = draft.tsMin === null ? ev.ts : Math.min(draft.tsMin, ev.ts)
+  draft.tsMax = draft.tsMax === null ? ev.ts : Math.max(draft.tsMax, ev.ts)
+  draft.eventsSeen += 1
+  draft.caseId = draft.caseId ?? ev.case_id
+}
+
+/** In-place pushCapped. Same delete-then-set ordering, so a re-emit still moves to the tail. */
+function pushCappedMut<K, V>(buffer: Map<K, V>, key: K, value: V, limit: number): void {
+  buffer.delete(key)
+  buffer.set(key, value)
+  while (buffer.size > limit) {
+    const oldest = buffer.keys().next()
+    if (oldest.done) break
+    buffer.delete(oldest.value)
+  }
+}
+
+/**
+ * In-place pushMetricPoint. Same decimation, so the time window survives identically.
+ *
+ * `owned` is the set of series this batch has already cloned. It is the difference
+ * between linear and quadratic: the pure path copies the whole points array per
+ * sample (up to METRIC_SERIES_CAP = 2000 entries, 8,000 times in the real case's
+ * cited-evidence flush — the last 2s of blocking after the Maps were fixed). Cloning
+ * once per series and then pushing makes the batch O(samples).
+ *
+ * Safety: the FIRST touch always clones, so the array handed to us by the previous
+ * committed state is never mutated. Only arrays minted inside this batch are pushed
+ * into, and nothing outside can be holding one.
+ */
+function pushMetricPointMut(
+  series: Map<string, MetricSeries>,
+  ev: EventEnvelope,
+  payload: { name: string; value: number; unit?: string },
+  owned: Set<string>,
+): void {
+  const key = metricKey(ev.component_id, payload.name)
+  const prior = series.get(key)
+  const point = { ts: ev.ts, value: payload.value }
+
+  if (prior && owned.has(key)) {
+    const points = prior.points as { ts: number; value: number }[]
+    points.push(point)
+    if (points.length > METRIC_SERIES_CAP) {
+      series.set(key, { ...prior, points: points.filter((_, i) => i % 2 === 0) })
+    }
+    return
+  }
+
+  let points = prior ? [...prior.points, point] : [point]
+  if (points.length > METRIC_SERIES_CAP) points = points.filter((_, i) => i % 2 === 0)
+  series.set(key, {
+    component_id: ev.component_id,
+    name: payload.name,
+    ...(payload.unit === undefined ? {} : { unit: payload.unit }),
+    points,
+  })
+  owned.add(key)
+}
+
+/**
+ * Apply many messages as one state transition.
+ *
+ * The hot buffers are copied ONCE for the whole batch and then mutated, instead of
+ * once per message. Nothing the caller holds is touched — the copies are private to
+ * this call, and the intermediate objects are never handed to React — so the result
+ * is indistinguishable from folding the pure reducer, which is exactly what the
+ * equivalence test asserts.
+ */
 export function applySseMessages(state: RunState, msgs: SseMessage[]): RunState {
-  return msgs.reduce(applySseMessage, state)
+  if (msgs.length === 0) return state
+  if (msgs.length === 1) return applySseMessage(state, msgs[0]!)
+
+  let draft: RunState = {
+    ...state,
+    events: new Map(state.events),
+    feed: new Map(state.feed),
+    density: new Map(state.density),
+    metricSeries: new Map(state.metricSeries),
+  }
+  // Series whose points array this batch has already cloned and may now push into.
+  const owned = new Set<string>()
+
+  for (const msg of msgs) {
+    if (msg.event === 'event_ingested') {
+      ingestMut(draft, msg.data, owned)
+    } else {
+      // Rare next to the event flood, so the pure reducer is cheap here. It carries
+      // our private buffers through its `...state` spread (or replaces one with a
+      // fresh copy of its own), so they stay private either way.
+      draft = applySseMessage(draft, msg)
+    }
+  }
+  return draft
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -459,6 +581,16 @@ export function applySseMessages(state: RunState, msgs: SseMessage[]): RunState 
 
 export interface RunActions {
   dispatch: (msg: SseMessage) => void
+  /**
+   * Apply a batch of messages as ONE state update — i.e. one React commit for the
+   * whole batch instead of one per message.
+   *
+   * This is not a micro-optimisation. Every SSE message arrives in its own task, so
+   * React cannot auto-batch them: 725 events meant 725 commits of a page carrying a
+   * cytoscape graph, a virtualised feed and sparklines. Identical reducer, identical
+   * order, so replay stays idempotent — only the commit count changes.
+   */
+  dispatchMany: (msgs: SseMessage[]) => void
   /** Wipe stream-derived state, keeping run identity. Call when the stream (re)opens. */
   reset: () => void
   /** Full teardown, including run identity. */
@@ -473,6 +605,9 @@ export const runStore = createStore<RunStore>()((set) => ({
   ...createInitialRunState(),
 
   dispatch: (msg) => set((state) => applySseMessage(state, msg)),
+
+  dispatchMany: (msgs) =>
+    set((state) => (msgs.length === 1 ? applySseMessage(state, msgs[0]!) : applySseMessages(state, msgs))),
 
   reset: () =>
     set((state) => ({

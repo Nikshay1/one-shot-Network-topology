@@ -344,7 +344,7 @@ a false-positive generator).
 
 ## Bugs worth remembering (found and fixed)
 
-Thirteen real bugs, all **fixed**. They're recorded because of *how* they were found:
+Fourteen real bugs, all **fixed**. They're recorded because of *how* they were found:
 in every case the full test suite was green and the bug was invisible to it. Each
 one surfaced by **running the thing** — a CLI, a demo, a hardening script, a real
 API key — not by testing it. Bugs 1–2 shared a root cause (the run's ledger was not
@@ -606,6 +606,41 @@ cookies are used), narrowable via `VERDICT_CORS_ORIGINS`. `test_cors_lets_a_brow
 sends a real preflight and checks the SSE route too.
 
 > **Lesson:** found by asking "what would the frontend hit first?" — not by any test.
+
+### 14. The run page re-rendered once per event, and copied the world each time
+
+Reported as "the current run page lags a lotttt". It did: on the real RE2-SS case the
+tab froze for **2.4 seconds at a stretch**, 7.5s of the first 18s spent blocked.
+
+Two compounding causes, and the second only became visible after fixing the first:
+
+- **One React commit per SSE message.** Every message arrives in its own task, so React
+  cannot auto-batch them the way it batches a click handler. 725 events meant 725 full
+  commits of a page carrying a cytoscape graph and a virtualised feed. Coalescing into
+  ~one flush per frame cut a demo run's blocking from **3997ms to 749ms**.
+- **The reducer copied four Maps and a points array per event.** Fine at one event per
+  commit; ruinous in a burst. And the real case *is* a burst: it pushes **10,601 events**
+  — the 2,000 stream cap plus an ~8,300-event cited-evidence flush (bug #5's fix) — so a
+  500-entry Map got copied 10,601 times, and a 2,000-point sparkline array got copied
+  once per sample. Batching alone did not fix this; it just regrouped 8,000 small copies
+  into one 2.4s task. The batch path now clones the hot buffers **once** and mutates the
+  draft.
+
+Result on the real case: **7528ms of blocking → 0ms. No long task at all.**
+
+The batch path is a second, mutating implementation of the `event_ingested` rule, which
+is a genuine hazard — two copies of one behaviour drift. `dispatchMany > matches the
+one-at-a-time path past every cap it re-implements` is the guard: it drives both paths
+past buffer eviction, metric decimation, config payloads and a re-emitted id, and demands
+identical state. Sabotage-verified twice (drop the density increment, drop the eviction —
+both fail it).
+
+> **Lesson:** the profile disagreed with me twice. First the frame counter said 0.6 FPS,
+> which was a lie — `requestAnimationFrame` is throttled in a hidden tab, and only
+> `longtask` told the truth. Then a benchmark proved the store was *not* the bottleneck
+> at demo scale, so batching was the fix — right up until batching exposed that at real
+> scale the store was the whole bottleneck. Both answers were correct, for different n.
+> "It's slow" is not one bug.
 
 ### 11. Evidence leaked across cases
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   EVENT_BUFFER_LIMIT,
+  METRIC_SERIES_CAP,
   applySseMessage,
   applySseMessages,
   createInitialRunState,
@@ -511,5 +512,150 @@ describe('mock sse sequence', () => {
         }
       }
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Batching
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('dispatchMany', () => {
+  /**
+   * The property the whole optimisation rests on. Every SSE message arrives in its
+   * own task, so React cannot auto-batch them: one dispatch per message meant one
+   * commit per message, and a full run spent its main thread re-rendering a
+   * cytoscape graph instead of drawing (measured: 3997ms of blocking in 25s, down
+   * to 749ms across a whole run once batched).
+   *
+   * Batching is only allowed to change the NUMBER of commits. If it can change the
+   * resulting state, replay-from-zero stops being idempotent and the entire
+   * un-raceable-UI guarantee goes with it.
+   */
+  it('lands the same state as dispatching one at a time', () => {
+    const msgs = loadMockSseMessages(MOCK_RECORDINGS.happy)
+
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    for (const msg of msgs) runStore.getState().dispatch(msg)
+    const oneByOne = runStore.getState()
+
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    runStore.getState().dispatchMany(msgs)
+    const batched = runStore.getState()
+
+    expect([...batched.events.keys()]).toEqual([...oneByOne.events.keys()])
+    expect([...batched.feed.keys()]).toEqual([...oneByOne.feed.keys()])
+    expect(selectRankedHypotheses(batched)).toEqual(selectRankedHypotheses(oneByOne))
+    expect([...batched.anomalies.keys()]).toEqual([...oneByOne.anomalies.keys()])
+    expect(batched.narration).toEqual(oneByOne.narration)
+    expect(batched.status).toBe(oneByOne.status)
+    expect(batched.tierChanges).toEqual(oneByOne.tierChanges)
+    expect([...batched.metricSeries.keys()]).toEqual([...oneByOne.metricSeries.keys()])
+    expect(batched.unknownEvents).toBe(oneByOne.unknownEvents)
+  })
+
+  it('applies a batch in order, not as a set', () => {
+    // Two upserts of one hypothesis in one batch: the LAST must win, exactly as it
+    // does when they arrive separately. A Map-merge that lost order would silently
+    // resurrect a superseded rank.
+    const first: SseMessage = { event: 'hypothesis_ranked', data: hypothesis({ rank: 1, score: 0.2 }) }
+    const second: SseMessage = { event: 'hypothesis_ranked', data: hypothesis({ rank: 1, score: 0.9 }) }
+
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    runStore.getState().dispatchMany([first, second])
+
+    expect(selectRankedHypotheses(runStore.getState())[0]!.score).toBe(0.9)
+  })
+
+  it('is a no-op on an empty batch rather than a state churn', () => {
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    const before = runStore.getState().events
+    runStore.getState().dispatchMany([])
+    expect(runStore.getState().events).toBe(before) // identity: no re-render
+  })
+
+  /**
+   * The batch path has its OWN mutating copy of the event_ingested rule, so the two
+   * can drift. The mock recording is far too small to notice: this drives a batch
+   * past every cap and edge the fast path re-implements — buffer eviction, metric
+   * decimation, config payloads and a re-emitted id — and demands byte-identical
+   * state from both paths.
+   *
+   * The real case pushes 10,328 events through here, so "it works on 40" proves
+   * nothing about the path that actually runs.
+   */
+  it('matches the one-at-a-time path past every cap it re-implements', () => {
+    const msgs: SseMessage[] = []
+    // Past BOTH caps: the event ring evicts (500) and one series decimates (2000).
+    // Decimation is the branch the fast path rewrites most aggressively — it pushes
+    // into an array it owns — so a batch that never reaches 2000 points would leave
+    // it entirely unexercised.
+    const N = METRIC_SERIES_CAP * 2 + 5
+    for (let i = 0; i < N; i++) {
+      const comp = i % 20 === 0 ? 'front-end' : 'catalogue' // catalogue blows the cap
+      msgs.push({
+        event: 'event_ingested',
+        data: {
+          event_id: `metric-${comp}-${String(i).padStart(6, '0')}`,
+          case_id: 'case-001',
+          source: 'metric',
+          component_id: comp,
+          ts: 1000 + i * 0.5, // sub-bucket steps exercise the density rounding
+          payload: { kind: 'metric', name: 'cpu', value: i % 7, unit: 'ratio' },
+        },
+      } as unknown as SseMessage)
+    }
+    // a config payload (its own copy-on-write branch)
+    msgs.push({
+      event: 'event_ingested',
+      data: {
+        event_id: 'config-catalogue-000001',
+        case_id: 'case-001',
+        source: 'config',
+        component_id: 'catalogue',
+        ts: 1200,
+        payload: { kind: 'config', change_type: 'limit', summary: 'max_connections 50->200' },
+      },
+    } as unknown as SseMessage)
+    // a re-emit: delete-then-set must move it to the tail on BOTH paths
+    msgs.push(msgs[5]!)
+
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    for (const m of msgs) runStore.getState().dispatch(m)
+    const pure = runStore.getState()
+
+    runStore.getState().clear()
+    runStore.getState().attach('case-001')
+    runStore.getState().dispatchMany(msgs)
+    const fast = runStore.getState()
+
+    expect(fast.events.size).toBe(EVENT_BUFFER_LIMIT) // the cap really was exercised
+    expect([...fast.events.keys()]).toEqual([...pure.events.keys()]) // incl. eviction order
+    expect([...fast.feed.keys()]).toEqual([...pure.feed.keys()])
+    expect([...fast.density.entries()]).toEqual([...pure.density.entries()])
+    expect([...fast.configChanges.keys()]).toEqual([...pure.configChanges.keys()])
+    expect(fast.eventsSeen).toBe(pure.eventsSeen)
+    expect(fast.tsMin).toBe(pure.tsMin)
+    expect(fast.tsMax).toBe(pure.tsMax)
+    expect(fast.caseId).toBe(pure.caseId)
+    expect(fast.status).toBe(pure.status)
+    for (const [k, series] of fast.metricSeries) {
+      expect(series.points).toEqual(pure.metricSeries.get(k)!.points)
+    }
+  })
+
+  it('never mutates the state handed to it', () => {
+    // The fast path mutates a DRAFT. If it ever touches the caller's maps, React's
+    // Object.is comparison sees no change and the UI silently stops updating.
+    const state = createInitialRunState()
+    const before = { events: state.events.size, feed: state.feed.size, seen: state.eventsSeen }
+    applySseMessages(state, loadMockSseMessages(MOCK_RECORDINGS.happy))
+    expect(state.events.size).toBe(before.events)
+    expect(state.feed.size).toBe(before.feed)
+    expect(state.eventsSeen).toBe(before.seen)
   })
 })
