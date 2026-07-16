@@ -17,6 +17,9 @@ import type {
   AnomalyEvent,
   BenchmarkResponse,
   CaseSummary,
+  ChatRequest,
+  ChatResponse,
+  ChatRetrieved,
   CounterfactualRequest,
   CounterfactualResponse,
   HealthResponse,
@@ -99,7 +102,7 @@ function stubPdf(): Blob {
 }
 
 export const mockApi = {
-  health: (): Promise<HealthResponse> => delay({ status: 'ok', version: '1.1' }, 20),
+  health: (): Promise<HealthResponse> => delay({ status: 'ok', version: '1.2' }, 20),
 
   cases: (): Promise<CaseSummary[]> => delay(clone(CASES)),
 
@@ -169,6 +172,90 @@ export const mockApi = {
   },
 
   benchmark: (): Promise<BenchmarkResponse> => delay(clone(BENCHMARK)),
+
+  /**
+   * Mock chat always answers `deterministic` — and that is the honest shape, not a
+   * shortcut: mock mode has no model, which is exactly the state the real backend is
+   * in with no key, OFFLINE=1, or a tripped spend cap. So the fixture exercises the
+   * degraded path the demo actually runs on, rather than a fantasy LLM reply.
+   *
+   * Retrieval is a crude word-overlap stand-in for the backend's TF-IDF. It does not
+   * need to rank identically — it needs to return real fixture facts with real
+   * fact_ids, so citation rendering is tested against ids that resolve.
+   *
+   * It does mirror one backend behaviour deliberately: the recommended fix is PINNED,
+   * present whatever the question was. Without it "what should I do to fix this?"
+   * retrieves nothing here — the word "fix" appears in no fixture statement — which
+   * is the same vocabulary gap the real retriever needed `corpus.pinned()` to close.
+   */
+  chat: (req: ChatRequest): Promise<ChatResponse> => {
+    const words = req.question.toLowerCase().match(/[a-z0-9_]+/g) ?? []
+    const scored = LEDGER.map((row) => {
+      const hay = `${row.kind} ${row.statement} ${row.component_ids.join(' ')}`.toLowerCase()
+      return { row, score: words.filter((w) => w.length > 2 && hay.includes(w)).length }
+    })
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+
+    const rec = REMEDIATION.recommended
+    const pinned: ChatRetrieved[] =
+      rec && rec.fact_id
+        ? [
+            {
+              fact_id: rec.fact_id,
+              kind: 'remediation',
+              text:
+                `[remediation] RECOMMENDED remedy for ${REMEDIATION.component}: ${rec.remedy}. ` +
+                `Rehearsed in the digital twin it cleared ${rec.symptoms_cleared_pct}% of ` +
+                `simulated symptoms.`,
+            },
+          ]
+        : []
+
+    const retrieved: ChatRetrieved[] = [
+      ...pinned,
+      ...scored
+        .filter((s) => s.row.fact_id !== rec?.fact_id)
+        .map((s) => ({
+          fact_id: s.row.fact_id,
+          kind: 'ledger_fact' as const,
+          text: `[${s.row.kind}] ${s.row.statement}`,
+        })),
+    ]
+
+    const lines = scored.map((s) => `- [${s.row.kind}] ${s.row.statement} [${s.row.fact_id}]`)
+    const answer = retrieved.length
+      ? [
+          'Answering from the evidence ledger directly (mock mode — no model available):',
+          '',
+          ...lines,
+          ...(rec
+            ? [
+                '',
+                `Recommended fix: **${rec.remedy}** on \`${REMEDIATION.component}\` — cleared ` +
+                  `${rec.symptoms_cleared_pct}% of symptoms **in the digital twin**, not in ` +
+                  `production${rec.fact_id ? ` [${rec.fact_id}]` : ''}.`,
+              ]
+            : []),
+        ].join('\n')
+      : 'No evidence in this run’s ledger matches that question. Try naming a component, or ' +
+        'ask about the ranking, the counterfactual, the twin, or the recommended fix.'
+
+    return delay(
+      {
+        answer,
+        mode: 'deterministic',
+        citations: retrieved.map((r) => r.fact_id).filter((id): id is string => Boolean(id)),
+        stripped: [],
+        citations_valid: true,
+        retrieved,
+        usd: 0,
+        attempts: 1,
+      },
+      500, // a real chat call is a round-trip to a model; don't pretend it is instant
+    )
+  },
 
   reportPdf: (): Promise<Blob> => delay(stubPdf(), 200),
 }

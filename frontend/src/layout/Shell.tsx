@@ -80,7 +80,9 @@ export function Shell({ children }: { children: ReactNode }) {
     { to: '/', label: 'Console', end: true },
     // Only linked once there is a run to look at, rather than somewhere that 404s.
     { to: runId ? `/run/${runId}` : '/', label: 'Current Run' },
-    { to: '/benchmark', label: 'Benchmark' },
+    // Chat replaced Benchmark here. /benchmark still exists and still works — it is
+    // simply unlinked, like /demo-script.
+    { to: '/chat', label: 'Chat' },
   ]
 
   return (

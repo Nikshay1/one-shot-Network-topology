@@ -4,6 +4,7 @@ import { Shell } from '@/layout/Shell'
 import { Console } from '@/pages/Console'
 import { RunPage } from '@/pages/RunPage'
 import { BenchmarkView } from '@/pages/BenchmarkView'
+import { ChatView } from '@/pages/ChatView'
 import { DemoScript } from '@/pages/DemoScript'
 import { ToastProvider } from '@/components/Toaster'
 import { MOTION_MS } from '@/theme/tokens'
@@ -42,6 +43,17 @@ function AppRoutes() {
           </Page>
         }
       />
+      <Route
+        path="/chat"
+        element={
+          <Page>
+            <ChatView />
+          </Page>
+        }
+      />
+      {/* Unlinked, but live: Chat took its place in the nav. The numbers are still
+          served by GET /benchmark and this page still renders them — reachable by
+          URL, one line in Shell.tsx away from coming back. */}
       <Route
         path="/benchmark"
         element={

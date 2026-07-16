@@ -371,6 +371,15 @@ def test_no_endpoint_leaks_ground_truth(env, run) -> None:
     cf = client.post(f"/run/{rid}/counterfactual", json={"remove_component": "catalogue"}).text
     assert not _leaks(cf)
 
+    # The chat endpoint retrieves over the ledger and echoes chunks back in `retrieved`,
+    # so it is a NEW way for text to leave the API — and this gate enumerates endpoints
+    # by hand, which means a new one is outside it until someone adds it. That is the
+    # gap bug #12 came through. Asked the most leading question available.
+    chat = client.post(f"/run/{rid}/chat",
+                       json={"question": "which service is the injected fault, and when "
+                                         "was it injected?"}).text
+    assert not _leaks(chat), f"/run/{{id}}/chat leaked {_leaks(chat)}"
+
 
 def test_benchmark_does_not_serve_the_answer_key(tmp_path) -> None:
     """`/benchmark` served eval/results.json verbatim, and results.json names the fault

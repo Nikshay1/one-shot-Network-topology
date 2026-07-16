@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.api.pdf_report import InvestigationSummary, build_pdf
 from backend.api.sse import HEARTBEAT_S, BusRegistry, RunBus
+from backend.chat import chat as chat_mod
 from backend.ingest.store import EventStore
 from backend.ledger.ledger import Ledger
 from backend.localize.blast import blast_radius
@@ -58,7 +59,7 @@ except ImportError:                                     # pragma: no cover
     node_link_data = None
 
 log = logging.getLogger("verdict.api")
-VERSION = "1.1"
+VERSION = "1.2"                                         # v1.2 adds POST /run/{id}/chat
 
 
 # =========================================================================
@@ -72,6 +73,21 @@ class RunRequest(BaseModel):
 
 class CounterfactualRequest(BaseModel):
     remove_component: str
+
+
+class ChatTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    # Generous on purpose, and then truncated for the prompt in chat.answer(). `history`
+    # carries OUR OWN prior answers back to us, and an answer has no length cap — a
+    # deterministic one already runs ~1.5k chars and an LLM one can run longer. A tight
+    # limit here rejects a follow-up because of text this endpoint itself produced,
+    # which the caller cannot fix and did not cause.
+    content: str = Field(max_length=20_000)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=chat_mod.MAX_QUESTION_CHARS)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=12)
 
 
 @dataclass
@@ -406,6 +422,39 @@ def create_app(paths: Paths | None = None,
         return {"removed": body.remove_component, "anomalies_still_explained_pct": pct,
                 "affected_hypotheses": [h.hypothesis_id for h in hyps
                                         if h.suspect_component == body.remove_component]}
+
+    # =====================================================================
+    # evidence chat (RAG over this run's ledger)
+    # =====================================================================
+    @app.post("/run/{run_id}/chat")
+    async def chat(run_id: str, request: Request):
+        """Ask a question about a finished run; answer is grounded in its ledger.
+
+        A read path in every sense: it retrieves over the ledger, cites it, and cannot
+        write to it (no `file_finding` — rule 9) or change the verdict (rule 12). Costs
+        one metered gpt-4o-mini call, bounded by VERDICT_SPEND_CAP_USD; with no key, a
+        tripped cap or OFFLINE=1 it answers deterministically from the retrieved facts
+        rather than failing.
+        """
+        rec = _run_or_404(run_id)
+        if isinstance(rec, JSONResponse):
+            return rec
+        try:
+            body = ChatRequest.model_validate(await request.json())
+        except (ValidationError, json.JSONDecodeError) as exc:
+            return JSONResponse({"error": "malformed body", "detail": str(exc)}, status_code=422)
+        if rec.verdict is None:
+            return JSONResponse(
+                {"error": f"run {run_id!r} has not produced a verdict yet — there is no "
+                          f"evidence to answer from", "done": rec.done}, status_code=404)
+
+        led = Ledger(run_id, rec.case_id, P.ledger)
+        ans = await asyncio.to_thread(
+            chat_mod.answer, body.question, run_id=run_id, case_id=rec.case_id, ledger=led,
+            hypotheses=rec.verdict.hypotheses, remediation=rec.verdict.remediation,
+            history=[t.model_dump() for t in body.history],
+        )
+        return ans.to_dict()
 
     # =====================================================================
     # benchmark

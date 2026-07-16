@@ -9,7 +9,7 @@
 import type { ComponentId, EventEnvelope, EventId, TopologyRelation } from './events'
 import type { AnomalyEvent } from './anomaly'
 import type { FaultType, HypothesisId, RankedHypothesis, Tier, TwinVerdict } from './hypothesis'
-import type { LedgerKind, LedgerRecord } from './ledger'
+import type { FactId, LedgerKind, LedgerRecord } from './ledger'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Errors
@@ -27,7 +27,7 @@ export interface ApiErrorBody {
 
 export interface HealthResponse {
   status: 'ok'
-  /** "1.1" */
+  /** "1.2" */
   version: string
 }
 
@@ -137,6 +137,47 @@ export interface NarrationChunk {
 export interface NarrationResponse {
   run_id: string
   chunks: NarrationChunk[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /run/{id}/chat — RAG over this run's evidence ledger
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatRequest {
+  question: string
+  /** Prior turns, oldest first. The backend keeps at most the last 6. */
+  history?: ChatTurn[]
+}
+
+/** A chunk the retriever put in front of the model. `fact_id` null = context only. */
+export interface ChatRetrieved {
+  fact_id: FactId | null
+  kind: 'ledger_fact' | 'hypothesis' | 'remediation'
+  text: string
+}
+
+export interface ChatResponse {
+  answer: string
+  /**
+   * `llm` — a real model answered. `cached` — a previous identical question in this
+   * run, replayed for $0. `deterministic` — no key, OFFLINE, or the spend cap tripped,
+   * so the retrieved facts are quoted directly. Never an error: chat degrades.
+   */
+  mode: 'llm' | 'cached' | 'deterministic'
+  /** Every [fact-...] in `answer` — each one resolves in this run's ledger. */
+  citations: FactId[]
+  /** Citations that did NOT resolve; their claims were deleted from `answer`. */
+  stripped: FactId[]
+  citations_valid: boolean
+  retrieved: ChatRetrieved[]
+  /** Measured, not estimated. 0 for cached and deterministic. */
+  usd: number
+  attempts: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

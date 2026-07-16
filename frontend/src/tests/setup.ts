@@ -62,3 +62,7 @@ HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 }
 
 HTMLElement.prototype.scrollTo = () => {}
+// Same jsdom gap: no layout engine, so no scrollIntoView. The chat transcript pins
+// itself to the newest message with it, and an unstubbed call throws inside a commit
+// — which surfaces as the whole component failing to render, not as a scroll bug.
+HTMLElement.prototype.scrollIntoView = () => {}

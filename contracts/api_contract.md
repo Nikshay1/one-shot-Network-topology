@@ -1,5 +1,9 @@
-# VERDICT API Contract (v1.1)
+# VERDICT API Contract (v1.2)
 
+> v1.2: adds `POST /run/{id}/chat` — retrieval-augmented Q&A over a finished run's
+> evidence ledger. Additive only: no existing endpoint, payload or SSE event changed,
+> so a v1.1 client is unaffected.
+>
 > v1.1: adds the agent-transcript and remediation endpoints plus the
 > `agent_step`, `agent_done`, and `remediation_result` SSE events.
 
@@ -23,6 +27,7 @@ never exposed by any endpoint.
 | POST | `/run/{id}/counterfactual` | `{remove_component: component_id}` | `200` `{removed, anomalies_still_explained_pct, affected_hypotheses}` |
 | GET | `/run/{run_id}/agent/{agent_name}/transcript` | — | `200` `application/x-ndjson` — JSONL of agent steps (one step per line) |
 | GET | `/run/{run_id}/remediation` | — | `200` `RemediationReport` (JSON) |
+| POST | `/run/{id}/chat` | `{question: string, history?: [{role, content}]}` | `200` `{answer, mode, citations, stripped, citations_valid, retrieved, usd, attempts}` (v1.2) |
 | GET | `/benchmark` | — | `200` `{runs: [...], metrics: {...}}` |
 | GET | `/health` | — | `200` `{status: "ok", version}` |
 
@@ -31,6 +36,27 @@ never exposed by any endpoint.
 - Unknown `case_id` / `run_id` → `404 {error}`.
 - Malformed body → `422 {error, detail}`.
 - `remove_component` must be a valid `component_id` present in the case topology, else `422`.
+- `POST /run/{id}/chat` on a run with no verdict yet → `404 {error, done}`: there is no
+  evidence to answer from. An empty or >1000-char `question` → `422`.
+
+### `POST /run/{id}/chat` — evidence chat (v1.2)
+
+RAG over the run's ledger. It is a **read path**: it cannot write a fact (`file_finding`
+is not in its reach — rule 9) and it does not decide the verdict (rule 12). Scores and
+tiers remain the scorer's alone.
+
+- `mode` is `llm` | `cached` | `deterministic`. **A `200` is not proof a model answered**
+  — with no API key, under `OFFLINE=1`, or once `VERDICT_SPEND_CAP_USD` trips, the
+  endpoint answers `deterministic` from the retrieved facts rather than failing (rule 11's
+  shape). Clients that care must read `mode`, not the status code.
+- `citations` are `fact_id`s that **resolve in this run's ledger**. Any citation that did
+  not resolve had its whole claim deleted from `answer` and is listed in `stripped`, with
+  `citations_valid: false` — the narrator's contract, applied verbatim.
+- `retrieved` is the chunks put in front of the model, for display. `fact_id` is `null`
+  for context that is not citable.
+- `usd` is metered per response, not estimated. `0` for `cached` and `deterministic`.
+- Ground truth is never retrieved: the corpus is the ledger, the ranked hypotheses and
+  the remediation report — never `eval/` or `data/labels` (rule 4).
 
 ## SSE event stream (`text/event-stream`)
 

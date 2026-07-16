@@ -41,9 +41,10 @@ server, and every data shape is a frozen contract.
 | 9 | Narrator + Fix-Rehearsal agent + PDF report | ✅ |
 | 10 | Replayer + API/SSE + eval/benchmark + hardening | ✅ |
 | 11 | Live LLM path: real key, spend meter + hard cap, hermetic tests, CORS | ✅ |
+| 12 | Evidence chat: TF-IDF RAG over the ledger, citation-bound, degrades to facts | ✅ |
 
 `scripts/golden.sh` — the self-checking gate every stage keeps green — currently
-runs **264 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–10
+runs **300 tests** (+4 live, opt-in) plus end-to-end data checks for stages 2–10
 (~5 min). It is hermetic and free: the key is blanked at the top of the script.
 
 > ### ✅ The LLM path HAS now been run against a real `OPENAI_API_KEY`
@@ -147,7 +148,7 @@ than merely observed, which is what makes it worth reporting.
 
 ```bash
 make setup                 # uv venv + editable install
-make golden                # the gate: 264 tests + stage 2-10 end-to-end checks (~5 min, free)
+make golden                # the gate: 300 tests + stage 2-10 end-to-end checks (~5 min, free)
 
 make run                   # serve the API on 127.0.0.1:8000  (contracts/api_contract.md v1.1)
 make demo-list             # the 7 demo scenarios, one per scenario type
@@ -258,11 +259,88 @@ frame (`: heartbeat 15s`). `EventSource` swallows comments, so you'll never see 
 want a "was it right?" badge you need the label, and labels are `/eval`-only by rule 4 —
 which is the point.
 
+**9. `POST /run/{id}/chat` answers `200` even when no model ran.** The evidence chat
+degrades instead of failing: no key, `OFFLINE=1`, or a tripped spend cap all return
+`mode: "deterministic"` — the retrieved facts, quoted, with no prose. Read `mode`, never
+the status code, if you want to know whether an LLM spoke. `citations` are fact ids that
+resolve; anything that didn't had its claim deleted and is listed in `stripped`.
+
 **CORS** is open by default; narrow it with `VERDICT_CORS_ORIGINS=http://localhost:5173`.
 Credentials are off, so keep it that way while origins are `*`.
 
-The full event and endpoint list is `contracts/api_contract.md` (v1.1) — it is frozen,
+The full event and endpoint list is `contracts/api_contract.md` (v1.2) — it is frozen,
 and the API is tested against it.
+
+## Evidence chat — RAG over the ledger, without an embedding in sight
+
+The Chat tab (it replaced Benchmark in the nav; `/benchmark` still exists, unlinked) lets
+an engineer ask a finished run two kinds of question: **"what should I do about this?"**
+and **"what's the evidence for X?"**.
+
+It is a **read path**. It cannot file a fact — `file_finding` is not in its reach (rule 9)
+— and it does not decide anything: the ranking and tiers are the scorer's, and chat only
+explains what is already in the ledger (rule 12). The prompt says so in as many words,
+because a chat box next to a verdict invites exactly the opposite assumption.
+
+**The corpus is the ledger**, plus the ranked hypotheses and the remediation rehearsals.
+Every `LedgerRecord` is already a short statement carrying a resolvable `fact_id` — a
+chunk and its citation, written by our own code. Deliberately excluded: the narration,
+because it is itself LLM output and retrieving it would let one model cite another's prose
+as evidence. Ground truth is never in the corpus (rule 4).
+
+**Retrieval is TF-IDF, not embeddings**, and the honest reason is not rule 6 — it is that
+a run's ledger is a few hundred short statements in a vocabulary our own writers control.
+scikit-learn was already a dependency. It is free, deterministic, instant, and works with
+the network unplugged.
+
+```bash
+py -m backend.chat.corpus   --run clean_cascade-01                              # the chunks
+py -m backend.chat.retrieve --run clean_cascade-01 --q "why catalogue?"         # no LLM
+py -m backend.chat.chat     --run clean_cascade-01 --q "what should I do?"      # free
+py -m backend.chat.chat     --run clean_cascade-01 --q "what should I do?" --live   # ~$0.0002
+```
+
+### What lexical retrieval costs, and what pays for it
+
+Running the CLI immediately broke it, which is the only reason we know: **"what should I
+do to fix this?" retrieved nothing at all** — zero chunks — because the synonym map
+pointed `fix` at "remediation" while the ledger says `remediation_result`, and a word
+tokenizer never splits the two. The single most likely question an on-call engineer asks,
+and it matched no evidence. Two things fix it, and a third makes it stay fixed:
+
+- **compound splitting** — `remediation_result` also emits `remediation` and `result`, so
+  a plain English word reaches our snake_case vocabulary without a stemmer;
+- **pinned context** — the rank-1 hypothesis and the recommended fix go into the prompt
+  *whatever* the question was, because "what do I do?" shares no words with
+  `scale_replicas` and never will;
+- **`test_every_synonym_target_exists_in_a_real_corpus`** — a synonym pointing at a word
+  no writer emits is dead weight, and dead weight is invisible until someone asks the
+  question it was supposed to serve.
+
+Both were sabotage-verified: reintroduce the original bug and
+`test_the_question_this_feature_exists_for_retrieves_the_fix` fails.
+
+Two more bugs the tests found rather than the demo: `"quantum tunnelling in the
+mesosphere"` retrieved evidence (stop words score above zero, so "drop zero-similarity
+chunks" was a lie until the analyzer filtered them), and `"evidence for catalogue"`
+ranked a **payment** fact top-2 (the synonym `evidence → observed` matched *"the observed
+symptoms"* in unrelated prose — a synonym that hits common English in our own writing is
+a false-positive generator).
+
+### Citations, cost, and the offline demo
+
+- **The narrator's contract, verbatim.** `validate_citations` is imported, not
+  reimplemented: an unresolvable `[fact-…]` gets its whole claim deleted, and one retry is
+  issued naming the violation. It is applied to *our own* deterministic answer too — the
+  check is on the claim, not on who made it.
+- **gpt-4o-mini, metered, capped.** Roughly $0.0002 a question, checked against
+  `VERDICT_SPEND_CAP_USD` *before* the request. Tripping it degrades to the deterministic
+  answer (rule 11's shape) rather than raising.
+- **Answers are cached per `run_id|question|prompt_version`**, so a repeated question is
+  free and an OFFLINE demo replays it with zero API calls. The agent transcript cache key
+  could not be reused: it is `hash(run_id | ledger_digest | prompt_version)` and has **no
+  slot for the question**, so two different questions in one run would collide onto one
+  cached answer.
 
 ## Bugs worth remembering (found and fixed)
 
@@ -578,6 +656,8 @@ backend/
   agents/               tools (typed registry) · budget · harness · transcript ·
                         usage (token meter + hard USD cap) ·
                         investigator · challenger · remediation
+  chat/                 corpus (ledger->chunks) · retrieve (TF-IDF, no embeddings) ·
+                        chat (RAG answer, citation-bound, degrades to facts)
   narrate/              narrator (citation-bound) · llm · cache
   replayer/             replay (ordered, speed-compressed, deterministic)
   api/                  app (every v1.1 endpoint) · sse (the ordered run bus) ·
@@ -589,7 +669,8 @@ backend/
   models.py             pydantic v2 models mirroring every schema
 eval/                   labels (the ONLY ground-truth reader) · split · run_benchmark ·
                         baselines · report  → results.json/md/png + tuning_log.json
-prompts/                investigator.j2 · challenger.j2 · remediation.j2 · narrator.j2
+prompts/                investigator.j2 · challenger.j2 · remediation.j2 · narrator.j2 ·
+                        chat.j2
 fixtures/               hand-written schema-valid sample data
 scenarios/registry.json 25 scenario variants
 scripts/                golden.sh · harden.sh · demo.sh · fetch_golden_case.sh
@@ -1102,6 +1183,15 @@ in-process end-to-end checks:
   didn't produce; a duplicate run is `409`; all 10 endpoints answer and **none of them
   leak ground truth**; the split is deterministic and loses no cases; the report
   renders from real results.
+- **stage 12** (`tests/test_chat.py`) — the motivating question ("what should I do to fix
+  this?") retrieves the rehearsed fix, and that test **fails when the original bug is
+  reintroduced** (sabotage-verified); every synonym targets a word our writers really
+  emit; a question matching nothing retrieves nothing rather than padding the prompt; an
+  invented citation is stripped and retried exactly once — including out of **our own**
+  deterministic answer; no key / OFFLINE / a raising client / a tripped cap each degrade
+  to facts rather than raise; the same question twice is answered once; two different
+  questions in one run do not collide in the cache; chat cannot write to the ledger; and
+  a long prior answer cannot break the next question.
 
 Beyond the gate, `make harden` proves the demo path: 7 scenarios × 3 cold starts all
 agree on top-1 (slowest median 8.2s), and the kill-network run (no key, `OFFLINE=1`)

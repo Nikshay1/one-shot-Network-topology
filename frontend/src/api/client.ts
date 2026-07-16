@@ -11,6 +11,8 @@ import type {
   ApiErrorBody,
   BenchmarkResponse,
   CaseSummary,
+  ChatRequest,
+  ChatResponse,
   CounterfactualRequest,
   CounterfactualResponse,
   HealthResponse,
@@ -269,6 +271,26 @@ export function reportPdfUrl(runId: string): string {
 export async function getBenchmark(): Promise<BenchmarkResponse> {
   if (IS_MOCK) return mockApi.benchmark()
   return getJson<BenchmarkResponse>('/benchmark')
+}
+
+/**
+ * POST /run/{id}/chat — ask a question about a finished run.
+ *
+ * 404 means the run has no verdict yet: there is no evidence to answer from, so
+ * the caller should wait rather than retry. A missing key, OFFLINE mode or a
+ * tripped spend cap are NOT errors — the backend answers with `mode:
+ * "deterministic"` instead, so never treat a 200 as proof a model spoke.
+ *
+ * Slower than the other endpoints (a real model call), hence the longer timeout.
+ */
+export async function postChat(runId: string, req: ChatRequest): Promise<ChatResponse> {
+  if (IS_MOCK) return mockApi.chat(req)
+  const res = await request(`/run/${encodeURIComponent(runId)}/chat`, {
+    method: 'POST',
+    body: req,
+    timeoutMs: 60_000,
+  })
+  return (await res.json()) as ChatResponse
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

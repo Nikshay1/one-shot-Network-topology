@@ -8,6 +8,16 @@
       "port": 8000
     },
     {
+      "name": "verdict-api-free",
+      "//": "The API with the LLM path off: agents degrade to the deterministic autopilot (rule 11) and chat answers deterministically. Blanks the key rather than unsetting it, because backend/__init__ calls load_dotenv(override=False) and an unset variable is simply reloaded from .env — that is bug #9. Sets the env BEFORE importing backend, which is the same reason.",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-c",
+        "import os, sys; os.environ['OPENAI_API_KEY'] = ''; os.environ['OFFLINE'] = '1'; from backend.main import _main; sys.exit(_main(['backend.main', '--host', '127.0.0.1', '--port', '8000']))"
+      ],
+      "port": 8000
+    },
+    {
       "name": "verdict-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
