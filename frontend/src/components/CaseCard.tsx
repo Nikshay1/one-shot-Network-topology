@@ -5,8 +5,14 @@ import type { CaseSummary } from '@/types/api'
 
 /**
  * What /cases actually returns is {case_id, title, n_components, n_events} —
- * nothing else. So this card shows those, plus a kind/scenario badge inferred
- * from the case_id itself (see demo/scenarios.ts).
+ * nothing else. So this card shows those, plus a scenario badge inferred from
+ * the case_id itself (see demo/scenarios.ts).
+ *
+ * Only REAL cases are badged. Stamping "synthetic" on the other 25 said the same
+ * thing 25 times and read as a disclaimer on the majority of the grid; the
+ * scenario badge underneath ("Clean cascade #1") already tells you what a case is.
+ * Marking the exception is the informative direction: `real` on catalogue_cpu-1
+ * means RE2-SS telemetry, and that is worth pointing at.
  *
  * Deliberately absent: `system` and `duration`. Neither exists on /cases.
  * `system` is available per case as topology.graph.name, but only via a separate
@@ -28,7 +34,7 @@ export function CaseCard({ case: c, onSelect }: { case: CaseSummary; onSelect: (
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="font-mono text-sm">{c.case_id}</CardTitle>
-            <Badge variant={kind === 'synthetic' ? 'synthetic' : 'real'}>{kind}</Badge>
+            {kind === 'real' && <Badge variant="real">{kind}</Badge>}
           </div>
           {scenarioType && (
             <div className="flex flex-wrap items-center gap-1.5">

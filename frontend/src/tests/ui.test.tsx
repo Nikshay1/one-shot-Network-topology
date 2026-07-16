@@ -59,13 +59,14 @@ describe('Console', () => {
     expect(within(demoButton).getByText('clean_cascade-01')).toBeInTheDocument()
   })
 
-  it('renders the case grid with kind badges and event counts', async () => {
+  it('badges only the real cases, and never marks a case synthetic', async () => {
     withRouter(<Console />)
     await screen.findByText('DEMO 1')
 
     expect(screen.getByText('27 total')).toBeInTheDocument()
-    // A real case gets the real badge; scenario cases get synthetic.
-    expect(screen.getAllByText('synthetic').length).toBeGreaterThan(0)
+    // Only the exception is badged: "synthetic" on 25 of 27 cards was noise, and the
+    // scenario badge already says what each case is.
+    expect(screen.queryAllByText('synthetic')).toHaveLength(0)
     expect(screen.getAllByText('real').length).toBe(2)
     // n_events is rendered, formatted.
     expect(screen.getByText('1,200')).toBeInTheDocument()
