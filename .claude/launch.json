@@ -22,6 +22,14 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
       "port": 5173
+    },
+    {
+      "name": "verdict-frontend-mock",
+      "//": "The frontend with NO backend: VITE_MOCK=1 serves every endpoint from src/mocks fixtures, so the whole UI is developable and demoable with the API down and zero LLM spend. Verified with the API stopped: a scripted run streams to a verdict and the chat answers with citations that resolve.",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend", "--", "--port", "4173", "--mode", "mock"],
+      "port": 4173,
+      "env": { "VITE_MOCK": "1" }
     }
   ]
 }
