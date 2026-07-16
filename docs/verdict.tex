@@ -58,11 +58,14 @@ VERDICT takes the noisy telemetry of a microservice system during an incident --
 metrics, logs, alerts, configuration changes --- and answers one question:
 \emph{which component actually broke?} It does not merely guess. It produces a
 ranked list of hypotheses, each carrying the evidence behind it, an honest label
-saying how strongly that evidence supports it, and a rehearsed fix. The design
-principle running through every stage is that the system should be able to say
-``I don't know'' and say \emph{why}. This document explains what happens inside,
-in plain language, and is candid about the parts that do not work as well as one
-might hope.
+saying how strongly that evidence supports it, and a rehearsed fix. Two engines
+investigate --- one arithmetic, one agentic --- and may be run simultaneously and
+fused, but the arithmetic always decides. The design principle running through
+every stage is that the system should be able to say ``I don't know'' and say
+\emph{why}. This document explains what happens inside, in plain language, and is
+candid about the parts that do not work as well as one might hope --- including
+a bug that made the system announce it had found nothing on every run it ever
+performed, and which it was, strictly speaking, right to announce.
 \end{abstract}
 
 \vspace{1em}
@@ -119,17 +122,29 @@ writes down \emph{why} in a permanent record called the \textbf{ledger}.
 \midrule
 1 & \code{ingest/}    & Turn four kinds of raw telemetry into one uniform event shape. \\
 2 & \code{detect/}    & Decide what counts as abnormal at all. \\
-3 & \code{localize/}  & Work out the blast radius --- which region of the graph is involved. \\
-4 & \code{rank/}      & Score every plausible suspect and order them. \\
-5 & \code{rank/counterfactual} & Delete a suspect and ask whether the incident still makes sense. \\
-6 & \code{twin/}      & Simulate the fault and check the simulation matches reality. \\
-7 & \code{rank/tiers} & Stamp each hypothesis \textsc{confirmed}, \textsc{correlated}, or \textsc{missing\_evidence}. \\
-8 & \code{agents/}    & Optionally, an LLM investigates, attacks its own answer, and rehearses a fix. \\
-9 & \code{narrate/}   & Write the report, where every claim must cite a ledger fact. \\
-10 & \code{api/}      & Stream the whole thing to a browser as it happens. \\
+3 & \code{ledger/seed} & File every detected anomaly as a fact --- what we \emph{saw}, before any conclusion drawn from it. \\
+4 & \code{localize/}  & Work out the blast radius --- which region of the graph is involved. \\
+5 & \code{rank/}      & Score every plausible suspect and order them. \\
+6 & \code{rank/counterfactual} & Delete a suspect and ask whether the incident still makes sense. \\
+7 & \code{twin/}      & Simulate the fault and check the simulation matches reality. \\
+8 & \code{rank/tiers} & Stamp each hypothesis \textsc{confirmed}, \textsc{correlated}, or \textsc{missing\_evidence}. \\
+9 & \code{agents/}    & Optionally, an LLM investigates, attacks its own answer, and rehearses a fix. \\
+10 & \code{rank/ensemble} & Optionally, run both engines at once and fuse their two verdicts into one. \\
+11 & \code{narrate/}   & Write the report, where every claim must cite a ledger fact. \\
+12 & \code{api/}      & Stream the whole thing to a browser as it happens. \\
+13 & \code{chat/}     & Answer questions about a finished run, grounded in that run's ledger. \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\begin{keybox}{One scorer, two ways of feeding it}
+The most useful thing to hold in your head: the ``agentic'' and ``deterministic''
+modes are \emph{not two models}. They are the \emph{same} scorer run over
+\emph{different evidence}. The agent chooses which expensive checks to buy; the
+autopilot always buys the same sweep. Both end in \code{scorer.rank}. Everything
+interesting about the difference between them --- including the ensemble in
+\S\ref{sec:ensemble} --- follows from that one fact.
+\end{keybox}
 
 \subsection{The edge convention (the most important paragraph here)}
 
@@ -364,6 +379,165 @@ There is a real asymmetry here worth knowing: a line with \emph{no} citation
 passes through untouched. The mechanism polices citations that are present and
 wrong; it does not force every sentence to be cited.
 
+\begin{keybox}{What ``the ledger is its entire world'' cost, once}
+For most of this project's life the narrator opened every report with:
+\code{\#\# Timeline --- No timeline facts were recorded for this run.} On every
+run that had ever executed.
+
+Detection was fine; the anomalies were on screen. But \emph{nothing ever filed
+them}. \code{anomaly\_observed} had zero callers in the entire repository, as did
+\code{config\_change\_observed}. Every fact in a finished ledger was a
+\emph{conclusion} --- counterfactual, twin, score --- and never an
+\emph{observation}. On \code{red\_herring\_config-01} the detectors find twelve
+anomalies; the ledger held fourteen facts and not one of them was an observation.
+
+So the narrator looked at its world, found no anomalies in it, and said so. It
+was not hallucinating an absence. It was \emph{correctly refusing to assert what
+it could not cite} --- and the citation validator would have deleted the line
+anyway. Filing evidence had been quietly delegated to the agent's
+\code{file\_finding}; the deterministic floor, which writes its own conclusions
+directly, was never given the same job. With no key, or an agent that simply
+does not bother, nobody files anything.
+
+The fix (\code{ledger/seed.py}) transcribes every detected anomaly into a fact
+\emph{before} the agent runs. The same run now narrates as an actual timeline:
+the three innocent config changes first, then \code{catalogue} latency
+$|z| = 1136$, then the cascade --- each line carrying a fact id that resolves.
+\end{keybox}
+
+\noindent
+Two smaller consequences of that fix are worth recording. First, the chat
+(\S\ref{sec:chat}) is built on the same ledger, so it inherited both the
+blindness and the cure without a line of its own changing. Second, seeding
+changes the ledger digest at agent start, and the transcript cache is keyed on
+that digest --- so every warmed transcript became stale the moment this landed.
+
+\section{The ensemble: both engines, then arithmetic}
+\label{sec:ensemble}
+
+The measurement above invites a lazy conclusion --- ``the LLM loses, delete it''
+--- which the per-scenario breakdown refutes. Neither engine dominates:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}lccl@{}}
+\toprule
+\textbf{Scenario type} & \textbf{Agentic} & \textbf{Fixed} & \textbf{Who wins} \\
+\midrule
+\code{confounded\_pair}     & \textbf{4/4} & 3/4 & the agent, when it can afford the sweep \\
+\code{red\_herring\_config} & 2/5 & \textbf{4/5} & the autopilot, by being disciplined \\
+\code{clean\_cascade}       & 2/5 & \textbf{3/5} & the autopilot \\
+\code{alert\_storm}         & 0/3 & \textbf{1/3} & the autopilot \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Two engines that fail on \emph{different} cases is the textbook precondition for
+an ensemble. So \code{--ensemble} runs both concurrently and fuses their verdicts.
+
+\subsection{Fuse the verdicts, not the evidence}
+
+The obvious design is to merge both ledgers and score once. It is wrong here, and
+the project's own benchmark is what says so. At spending parity the agent
+\emph{loses} \code{red\_herring\_config} precisely \emph{because} it can now
+afford to look at everything: the extra evidence drags innocent-but-correlated
+components up the ranking.
+
+\begin{keybox}{More evidence is not monotonically better}
+Pooling the two ledgers assumes it is. Fusing the two \emph{verdicts} does not:
+it keeps the autopilot's discipline at weight $(1-w)$ even when the agent's
+evidence misleads. The design follows the measurement, not the intuition.
+\end{keybox}
+
+\subsection{The weight is derived, not tuned}
+
+Let $A$ and $F$ be the two rankings. The weight on the agentic side is:
+
+\begin{equation}
+w =
+\begin{cases}
+  0.5 & \text{if } \operatorname{top}(A) = \operatorname{top}(F) \\[0.4em]
+  \dfrac{s(A_1)}{s(A_1) + s(F_1)} & \text{otherwise}
+\end{cases}
+\qquad
+s(h) =
+\begin{cases}
+3 & \text{\textsc{confirmed}} \\
+2 & \text{\textsc{correlated}} \\
+1 & \text{\textsc{missing\textunderscore evidence}}
+\end{cases}
+\end{equation}
+
+When both engines independently land on the same suspect there is nothing to
+arbitrate, so they average. When they disagree, the tie is broken by how
+well-evidenced each one's \emph{own} top suspect is --- and that ladder is not a
+new invention, it is the tier ordering \code{tiers.py} already publishes.
+
+\begin{keybox}{Why there is no tuned constant}
+A weight fitted to the 23 synthetic cases and then reported on those same 23
+cases is overfitting in a lab coat. The dev split is \emph{empty} --- $n=1$ real
+case, and 20\% of one case rounds to zero --- so a fitted weight could not be
+honestly validated even in principle. A test greps the weight function for float
+literals and fails if anything other than $0$, $0.5$ or $1$ appears.
+\end{keybox}
+
+Fusion blends the five sub-scores \emph{component-wise}, so the blended breakdown
+still sums to the blended score --- the model validator enforces that equality to
+$10^{-6}$, so a score computed separately from its parts would simply be rejected.
+The fused tier is \textbf{re-derived} by \code{tiers.py} from the union of both
+engines' evidence, never copied from either side. Evidence is merged, not
+averaged: a twin the agent ran and the autopilot skipped is still a twin that
+ran, and averaging a real verdict against ``pending'' would invent a measurement.
+
+\subsection{The ledgers must be isolated}
+
+Each engine's ranking is a rescore over \emph{its own} ledger. Share one and the
+autopilot's five counterfactuals leak into the agent's evidence and vice versa;
+the two opinions collapse into one and there is nothing left to ensemble. They
+cannot even share a \code{Ledger} object: fact ids are minted from an in-memory
+per-component counter, so two writers on one file mint \code{fact-catalogue-0000}
+twice.
+
+The ledger the narrator finally reads is therefore rebuilt: seeded with the
+observations, then given every \emph{derived} fact both engines bought, re-filed
+so each gets an unambiguous canonical id and deduplicated on
+(kind, components, statement) --- both engines run the same deterministic
+counterfactual, so the overlap is exact.
+
+\subsection{One live case, and what it showed}
+
+Measured on \code{red\_herring\_config-01} with a real key ($\$0.06$, $n=1$):
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Engine} & \textbf{Top-1} & \textbf{Correct?} \\
+\midrule
+Agentic (\code{gpt-4o}) & \code{front-end} & no --- it ranked the true fault \#4 \\
+Fixed (autopilot)       & \code{catalogue} & yes \\
+\textbf{Ensemble}       & \textbf{\code{catalogue}} & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The arithmetic explains itself. The agent hit \code{budget\_exhausted} before
+buying the counterfactual that demotes \code{front-end}, so \code{front-end} kept
+its floor score of $0.554$ where the autopilot's full sweep had cut it to $0.278$.
+Averaged: $0.416$, below \code{catalogue}'s $0.480$. The ensemble rescued a wrong
+agentic verdict --- not by trusting the better model, but by refusing to trust
+either one completely.
+
+\begin{keybox}{What this is not}
+One case is a demonstration, not a rate. The claim ``the ensemble beats both
+engines'' is \textbf{unmeasured}: it needs the full synthetic suite, which costs
+roughly \$1.50 of live agent runs. Until that is done, the honest statement is
+that the ensemble is \emph{motivated} by the per-scenario table and
+\emph{illustrated} by one case.
+\end{keybox}
+
 \section{What the interface shows}
 
 The frontend is a single-page React application that consumes the API and
@@ -378,8 +552,98 @@ nothing else. It renders, live over a streaming connection:
   rescores --- this is where you watch the red herring fall;
   \item the agent transcripts with the budget meter filling;
   \item the report, where every citation chip resolves to its fact on hover;
-  \item the benchmark.
+  \item the chat, where the run's own evidence answers questions about it.
 \end{itemize}
+
+\noindent
+Each surface has a different authority, and conflating them is the easiest
+mistake available:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Tab} & \textbf{Fed by} & \textbf{Authority} \\
+\midrule
+Incident & \code{event\_ingested}, \code{anomaly\_detected} & observation \\
+Verdict  & \code{hypothesis\_ranked}, \code{tier\_changed}  & \textbf{the verdict} \\
+Agents   & \code{agent\_step}, \code{agent\_done}           & none --- it only adds evidence \\
+Report   & \code{narration\_chunk}                          & language, citation-bound \\
+Chat     & \code{POST /run/\{id\}/chat}                     & read path --- cannot write or decide \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The agent is visible everywhere and decisive nowhere. Its findings move the
+ranking only by entering the ledger and being re-scored.
+
+\section{The chat: retrieval over the run's own evidence}
+\label{sec:chat}
+
+An engineer can ask a finished run two kinds of question --- \emph{``what should
+I do about this?''} and \emph{``what's the evidence for X?''} --- and be answered
+out of that run's ledger.
+
+The corpus is the ledger, plus the ranked hypotheses and the rehearsed fixes. That
+is less a design than an observation: every ledger record is \emph{already} a
+short natural-language statement carrying a resolvable id --- a retrieval chunk
+and its citation, written by our own code. The narration is deliberately excluded:
+it is itself model output, and retrieving it would let one model cite another's
+prose as evidence.
+
+\begin{keybox}{Retrieval without embeddings}
+Retrieval is TF--IDF, not a vector database. The honest reason is not the
+project's no-deep-learning rule --- it is that a run's ledger is a few hundred
+short statements in a vocabulary \emph{our own writers control}. Lexical search
+over that is deterministic, free, instant, works with the network unplugged, and
+adds no dependency. A neural retriever here would be machinery in search of a
+problem.
+\end{keybox}
+
+It is a read path in every sense: no \code{file\_finding}, and it does not decide
+the verdict --- the prompt says so, because a chat box next to a verdict invites
+exactly the opposite assumption. Citation validation is the narrator's, imported
+rather than reimplemented: an unresolvable \code{[fact-\ldots]} has its claim
+deleted, and the check is applied to our \emph{own} deterministic answer too --- it
+polices the claim, not the author.
+
+\subsection{What lexical retrieval costs}
+
+Running it broke it immediately, which is the only reason we know. \emph{``What
+should I do to fix this?''} retrieved \textbf{nothing at all}: the synonym map
+pointed \code{fix} at ``remediation'' while the ledger says
+\code{remediation\_result}, and a word tokenizer never splits the two. The single
+likeliest question an on-call engineer asks, matching zero evidence.
+
+Three things fix it, and the third is the one that lasts:
+
+\begin{enumerate}[leftmargin=1.6em]
+  \item \textbf{Compound splitting} --- \code{remediation\_result} also emits
+  \code{remediation} and \code{result}, so a plain English word reaches our
+  snake\_case vocabulary without a stemmer.
+  \item \textbf{Pinned context} --- the top hypothesis and the recommended fix
+  enter the prompt \emph{whatever} the question was, because ``what do I do?''
+  shares no words with \code{scale\_replicas} and never will.
+  \item \textbf{A test that fails if a synonym points at a word no writer emits.}
+  Dead weight in a synonym map is invisible until someone asks the question it was
+  supposed to serve.
+\end{enumerate}
+
+Two further bugs the tests found rather than the demo: \emph{``quantum tunnelling
+in the mesosphere''} retrieved evidence (stop words score above zero, so ``drop
+zero-similarity chunks'' was a lie until the analyzer filtered them), and
+\emph{``evidence for catalogue''} ranked a \code{payment} fact second --- the
+synonym \code{evidence} $\rightarrow$ \code{observed} matched the words ``the
+observed symptoms'' in unrelated prose. A synonym that collides with ordinary
+English in your own writing is a false-positive generator.
+
+\begin{keybox}{A \code{200} is not proof a model answered}
+With no key, under \code{OFFLINE=1}, or once the spend cap trips, the endpoint
+returns \code{mode: "deterministic"} and quotes the retrieved facts instead of
+failing. Degradation is a demotion, never an error --- so a client that wants to
+know whether an LLM spoke must read \code{mode}, not the status code.
+\end{keybox}
 
 \begin{keybox}{One rule governs the entire interface}
 The frontend never computes a tier, a score, or a rank. It renders exactly what
@@ -434,7 +698,21 @@ A documentation section that lists only strengths is marketing. These are real.
 
   \item[The agentic path underperforms the autopilot.] See above: 0.39 versus
   0.52. The LLM's value in this system is currently explanation and challenge,
-  not accuracy.
+  not accuracy. The ensemble (\S\ref{sec:ensemble}) is the response to this, and
+  it is not yet a rebuttal --- see the next item.
+
+  \item[The ensemble is unmeasured.] It is \emph{motivated} by a real
+  per-scenario complementarity and \emph{illustrated} by exactly one live case,
+  where it rescued a wrong agentic verdict. One case is a demonstration, not a
+  rate. Whether fusing beats both engines across the suite is an open question
+  costing roughly \$1.50 of live runs to answer, and it is entirely possible the
+  answer is no. Nothing in this document should be read as claiming otherwise.
+
+  \item[The challenger does not run in ensemble mode.] Its penalty is applied by
+  a rescore over the canonical ledger, which would re-derive every score from
+  scratch and silently overwrite the fused ones --- discarding the ensemble
+  immediately after computing it. Folding the penalty into the fusion is a real
+  piece of work, not a line to sneak in.
 
   \item[Held-out is tiny.] The held-out suite has $n=1$ in places. A single case
   is an anecdote, not a rate, and the interface labels it as such rather than
@@ -451,9 +729,17 @@ A documentation section that lists only strengths is marketing. These are real.
   spend by counting events and mirroring the cost table from source --- honest,
   but it will drift silently if the backend's costs change.
 
-  \item[Several ledger fact kinds are never written.] Six of the twelve declared
-  kinds have no production writer; they exist only if an LLM files one. Anything
-  built on their presence is building on sand.
+  \item[Several ledger fact kinds are still never written.] This used to read
+  ``six of the twelve''. It is now \textbf{four}: \code{anomaly\_observed} and
+  \code{config\_change\_observed} acquired a writer once it became clear that
+  their absence was what made the narrator announce that nothing had been
+  detected. The remaining four --- \code{anomaly\_absent}, \code{topology\_path},
+  \code{temporal\_order}, \code{investigation\_note} --- have no production
+  writer and exist only if an LLM files one. \code{temporal\_order} is the one
+  that stings: the narrator's Timeline would read far better with explicit ``this
+  config change preceded that anomaly by 45 seconds'' facts, and the scorer
+  already computes precedence internally without ever writing it down. Anything
+  built on the presence of these four is building on sand.
 
   \item[Baselines do not run.] The external comparison library is not importable
   in this environment, so the baseline row is empty. The evaluator records the
@@ -484,6 +770,18 @@ If the project has a thesis, it is these.
   the run. Citation does not resolve $\rightarrow$ the claim is deleted. No
   telemetry $\rightarrow$ the tier drops and the report says what to instrument.
   At no point does the system fill a gap with a guess.
+
+  \item \textbf{Let the measurement design the system.} The ensemble fuses
+  verdicts rather than pooling evidence for exactly one reason: the benchmark
+  showed that giving the agent \emph{more} evidence made it \emph{worse} on the
+  red-herring cases. The intuition said pool; the data said don't. Where a number
+  and an instinct disagree, the number is the specification.
+
+  \item \textbf{A parameter fitted to your test set is not a parameter, it is a
+  memory.} The ensemble weight is derived from the tier ladder rather than tuned,
+  because with an empty dev split there is no honest way to validate a fitted
+  one --- and a test greps the function to keep a future contributor from
+  quietly adding one.
 \end{enumerate}
 
 \section{Running it}
@@ -500,6 +798,18 @@ cd frontend && VITE_MOCK=1 npm run dev
 
 # One demo scenario, end to end (resets the run's ledger, asserts warm caches)
 OFFLINE=1 make demo-2
+
+# The ensemble: both engines concurrently, then fused
+py -m backend.pipeline --case red_herring_config-01 --ensemble --top 5
+
+# Ask a finished run a question (free; --live uses gpt-4o-mini, ~$0.0002)
+py -m backend.chat.chat --run red_herring_config-01 --q "what should I do?"
+
+# The retrieval alone, with no model involved at all
+py -m backend.chat.retrieve --run red_herring_config-01 --q "why catalogue?"
+
+# What detection filed as evidence
+py -m backend.ledger.seed --case red_herring_config-01
 
 # The gate everything must pass
 make golden
@@ -521,7 +831,16 @@ a simulation that can fail to reproduce a claim, a tier that refuses to say
 benchmark that publishes the case where the clever component loses to the simple
 one.
 
+The ensemble is the same idea aimed at the system itself. Having measured that
+the clever engine loses to the simple one --- and, per scenario, that each loses
+where the other wins --- the response is not to pick a favourite but to run both
+and let arithmetic arbitrate, with a weight nobody was allowed to tune. On the
+one live case measured so far it rescued a wrong agentic verdict; whether it does
+so at a rate worth quoting is still an open question, and this document says so
+rather than rounding a demonstration up into a result.
+
 Any system can produce an answer. The work here is in producing an answer that
-tells you how much to trust it.
+tells you how much to trust it --- and, when the honest answer is ``not much
+yet'', in saying that out loud.
 
 \end{document}
