@@ -42,6 +42,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.agents import usage
+from backend.chat import scope
 from backend.chat.corpus import Chunk, build, pinned
 from backend.chat.retrieve import DEFAULT_K, search
 from backend.narrate import cache
@@ -63,7 +64,7 @@ MAX_HISTORY_CHARS = 800
 @dataclass
 class ChatAnswer:
     text: str
-    mode: str                                    # llm | deterministic | cached
+    mode: str                                    # llm | deterministic | cached | refused
     citations: list[str] = field(default_factory=list)
     stripped: list[str] = field(default_factory=list)
     citations_valid: bool = True
@@ -189,6 +190,19 @@ def answer(
                for t in (history or [])[-MAX_HISTORY_TURNS:]]
 
     chunks = build(ledger=ledger, hypotheses=hypotheses, remediation=remediation)
+
+    # The scope gate runs BEFORE anything is retrieved or spent. An out-of-scope
+    # question never reaches the model, so it cannot be talked into answering it —
+    # and the refusal costs $0.00. The components come from this run's own evidence,
+    # so "why is carts slow?" is in scope on a case that has a carts and out of scope
+    # on one that does not.
+    components = {c for ch in chunks for c in ch.component_ids}
+    verdict = scope.check(question, components)
+    if not verdict.in_scope:
+        return ChatAnswer(text=verdict.reply or scope.REFUSAL, mode="refused",
+                          citations=[], stripped=[], citations_valid=True,
+                          retrieved=[], usd=0.0)
+
     selected = select(chunks, question, hypotheses, remediation, k)
     retrieved = [{"fact_id": c.fact_id, "kind": c.kind, "text": c.text} for c in selected]
 

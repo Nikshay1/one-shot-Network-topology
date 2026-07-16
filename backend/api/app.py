@@ -32,6 +32,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,6 +149,33 @@ def redact_benchmark(doc: dict) -> dict:
                    for r in doc.get("runs", [])]
     out["redacted"] = list(_GROUND_TRUTH_RUN_FIELDS)
     return out
+
+
+_SCORED_RE = re.compile(r"scored\s+([0-9]*\.?[0-9]+)")
+_TIER_RE = re.compile(r"tier=(\w+)")
+
+
+def _top_from_facts(facts: list) -> tuple[str | None, str | None]:
+    """The leading suspect, read back out of a persisted ledger.
+
+    The scores live in `hypothesis_scored` statements because that is the audit
+    trail; parsing them back is how a run from a previous process still shows a
+    suspect in the picker. `rescore.twin_facts` already reads statements this way,
+    so this is the house style rather than a new idea — but it IS parsing prose, so
+    it degrades to (None, None) rather than guessing.
+    """
+    best: tuple[float, str | None, str | None] = (-1.0, None, None)
+    for f in facts:
+        if f.kind != "hypothesis_scored" or not f.component_ids:
+            continue
+        m = _SCORED_RE.search(f.statement)
+        if not m:
+            continue
+        score = float(m.group(1))
+        if score > best[0]:
+            t = _TIER_RE.search(f.statement)
+            best = (score, f.component_ids[0], t.group(1) if t else None)
+    return best[1], best[2]
 
 
 def cors_origins() -> list[str]:
@@ -426,6 +454,70 @@ def create_app(paths: Paths | None = None,
     # =====================================================================
     # evidence chat (RAG over this run's ledger)
     # =====================================================================
+    def _chat_sources(run_id: str):
+        """The evidence to answer about `run_id`, or a 404.
+
+        Two places a finished run can live. In memory it carries its full verdict
+        (hypotheses + remediation objects). On disk it is a ledger, which survives a
+        restart and is most of what the chat reads anyway — so a case run yesterday is
+        still answerable today, just without the pinned verdict objects.
+
+        An IN-FLIGHT run is deliberately NOT served from disk: its ledger is the
+        PREVIOUS run's until this one finishes rewriting it, and answering from that
+        would be the stale-ledger bug wearing a new hat.
+        """
+        rec = runs.get(run_id)
+        if rec is not None:
+            if rec.verdict is None:
+                return _404_no_verdict(run_id, rec.done)
+            return (Ledger(run_id, rec.case_id, P.ledger),
+                    rec.verdict.hypotheses, rec.verdict.remediation, rec.case_id)
+
+        path = Path(P.ledger) / f"{run_id}.jsonl"
+        if not path.exists():
+            return _404("run_id", run_id)
+        # run_id == case_id by construction, which is what makes this recoverable.
+        return Ledger(run_id, run_id, P.ledger), None, None, run_id
+
+    def _404_no_verdict(run_id: str, done: bool):
+        return JSONResponse(
+            {"error": f"run {run_id!r} has not produced a verdict yet — there is no "
+                      f"evidence to answer from", "done": done}, status_code=404)
+
+    @app.get("/runs")
+    async def list_runs():
+        """Finished runs the chat can answer about — memory first, then disk.
+
+        Ground truth is not involved: every field here is derived from the run's own
+        ledger or verdict, both of which already leave via other endpoints.
+        """
+        out: dict[str, dict] = {}
+
+        led_dir = Path(P.ledger)
+        if led_dir.exists():
+            for path in sorted(led_dir.glob("*.jsonl")):     # not recursive: skips _modes/
+                rid = path.stem
+                try:
+                    facts = [f for f in Ledger(rid, rid, P.ledger).query(limit=100_000)]
+                except Exception:                            # pragma: no cover - corrupt file
+                    continue
+                if not facts:
+                    continue
+                top, tier = _top_from_facts(facts)
+                out[rid] = {"run_id": rid, "case_id": rid, "n_facts": len(facts),
+                            "top_suspect": top, "tier": tier, "source": "ledger"}
+
+        for rid, rec in runs.items():
+            if rec.verdict is None or not rec.verdict.hypotheses:
+                continue
+            top = rec.verdict.hypotheses[0]
+            out[rid] = {"run_id": rid, "case_id": rec.case_id,
+                        "n_facts": out.get(rid, {}).get("n_facts", 0),
+                        "top_suspect": top.suspect_component, "tier": top.tier,
+                        "mode": rec.verdict.mode, "source": "run"}
+
+        return sorted(out.values(), key=lambda r: r["run_id"])
+
     @app.post("/run/{run_id}/chat")
     async def chat(run_id: str, request: Request):
         """Ask a question about a finished run; answer is grounded in its ledger.
@@ -434,24 +526,22 @@ def create_app(paths: Paths | None = None,
         write to it (no `file_finding` — rule 9) or change the verdict (rule 12). Costs
         one metered gpt-4o-mini call, bounded by VERDICT_SPEND_CAP_USD; with no key, a
         tripped cap or OFFLINE=1 it answers deterministically from the retrieved facts
-        rather than failing.
+        rather than failing. A question that is not about this incident is declined by
+        `chat.scope` before any of that, for $0.00 — see `mode: "refused"`.
         """
-        rec = _run_or_404(run_id)
-        if isinstance(rec, JSONResponse):
-            return rec
         try:
             body = ChatRequest.model_validate(await request.json())
         except (ValidationError, json.JSONDecodeError) as exc:
             return JSONResponse({"error": "malformed body", "detail": str(exc)}, status_code=422)
-        if rec.verdict is None:
-            return JSONResponse(
-                {"error": f"run {run_id!r} has not produced a verdict yet — there is no "
-                          f"evidence to answer from", "done": rec.done}, status_code=404)
 
-        led = Ledger(run_id, rec.case_id, P.ledger)
+        src = _chat_sources(run_id)
+        if isinstance(src, JSONResponse):
+            return src
+        led, hyps, remediation, case_id = src
+
         ans = await asyncio.to_thread(
-            chat_mod.answer, body.question, run_id=run_id, case_id=rec.case_id, ledger=led,
-            hypotheses=rec.verdict.hypotheses, remediation=rec.verdict.remediation,
+            chat_mod.answer, body.question, run_id=run_id, case_id=case_id, ledger=led,
+            hypotheses=hyps, remediation=remediation,
             history=[t.model_dump() for t in body.history],
         )
         return ans.to_dict()

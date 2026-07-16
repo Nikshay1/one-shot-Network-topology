@@ -20,6 +20,7 @@ import type {
   ChatRequest,
   ChatResponse,
   ChatRetrieved,
+  ChatRun,
   CounterfactualRequest,
   CounterfactualResponse,
   HealthResponse,
@@ -188,7 +189,60 @@ export const mockApi = {
    * retrieves nothing here — the word "fix" appears in no fixture statement — which
    * is the same vocabulary gap the real retriever needed `corpus.pinned()` to close.
    */
+  /** GET /runs — the fixture ledger describes one case, so the picker shows one. */
+  runs: (): Promise<ChatRun[]> =>
+    delay([
+      {
+        run_id: 'case-001',
+        case_id: 'case-001',
+        n_facts: LEDGER.length,
+        top_suspect: 'catalogue-db',
+        tier: 'CONFIRMED',
+        source: 'run',
+      },
+    ]),
+
   chat: (req: ChatRequest): Promise<ChatResponse> => {
+    // Mirror the backend's scope gate. Not for fidelity's sake: without it, mock mode
+    // would cheerfully answer "what's the weather" while the real backend refuses, and
+    // the UI would be developed against a bot that behaves differently from the one
+    // that ships.
+    const qt = (req.question.toLowerCase().match(/[a-z0-9_-]+/g) ?? []).map((w) => w)
+    // Mirrors backend/chat/scope.py's lexicon. Note what is NOT here: interrogatives
+    // ("why", "what") and bare "recommend". The backend excludes them because they
+    // carry no domain signal — "recommend" let a restaurant question through — and a
+    // mock that is more permissive than the real gate is a mock that lies.
+    const DOMAIN =
+      /\b(anomal|evidence|fact|ledger|cause|root|suspect|blame|fix|remed|rehears|recommended|alternativ|counterfactual|twin|tier|confirmed|correlated|missing|rank|score|verdict|incident|latency|cpu|error|config|topology|path|component|service|cascade|symptom|detect|investigat|agent|ensemble|rule|innocent|redundant|restart|rollback|scale|throttle|instrument|telemetry|metric|log|alert|timeline)/
+    const NAMES = new Set(LEDGER.flatMap((r) => r.component_ids.map((c) => c.toLowerCase())))
+    const inScope =
+      DOMAIN.test(req.question.toLowerCase()) || qt.some((w) => NAMES.has(w))
+
+    if (!inScope) {
+      const greeting = /^(hi|hello|hey|thanks|thank you|bye|ok)\b/i.test(req.question.trim())
+      return delay(
+        {
+          answer: greeting
+            ? "Hello. I'm the evidence assistant for this incident run — ask me about what " +
+              'was detected, why a component is ranked where it is, or what to do about it.'
+            : 'I can only answer questions about this incident — the evidence in this run’s ' +
+              'ledger, the ranked suspects, and the fixes that were rehearsed. I don’t have ' +
+              'anything to say about that.\n\nThings I can answer for this case:\n' +
+              '- What should I do to fix this?\n' +
+              '- What is the evidence for the top suspect?\n' +
+              '- What did you rule out, and why?',
+          mode: 'refused',
+          citations: [],
+          stripped: [],
+          citations_valid: true,
+          retrieved: [],
+          usd: 0,
+          attempts: 1,
+        },
+        200,
+      )
+    }
+
     const words = req.question.toLowerCase().match(/[a-z0-9_]+/g) ?? []
     const scored = LEDGER.map((row) => {
       const hay = `${row.kind} ${row.statement} ${row.component_ids.join(' ')}`.toLowerCase()

@@ -13,6 +13,7 @@ import type {
   CaseSummary,
   ChatRequest,
   ChatResponse,
+  ChatRun,
   CounterfactualRequest,
   CounterfactualResponse,
   HealthResponse,
@@ -271,6 +272,18 @@ export function reportPdfUrl(runId: string): string {
 export async function getBenchmark(): Promise<BenchmarkResponse> {
   if (IS_MOCK) return mockApi.benchmark()
   return getJson<BenchmarkResponse>('/benchmark')
+}
+
+/**
+ * GET /runs — the finished runs the chat can answer about.
+ *
+ * Includes runs recovered from ledgers on disk, so a case run before the last API
+ * restart is still answerable. Empty is a normal state: it means nothing has
+ * finished yet, not that anything is broken.
+ */
+export async function getChatRuns(): Promise<ChatRun[]> {
+  if (IS_MOCK) return mockApi.runs()
+  return getJson<ChatRun[]>('/runs')
 }
 
 /**

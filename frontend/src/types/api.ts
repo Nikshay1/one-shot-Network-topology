@@ -161,14 +161,32 @@ export interface ChatRetrieved {
   text: string
 }
 
+/** An entry in the chat's case picker — a finished run it can answer about. */
+export interface ChatRun {
+  run_id: string
+  case_id: string
+  /** How many facts its ledger holds. A thin ledger answers thinly. */
+  n_facts: number
+  /** Read back from the ledger for a persisted run; null if it could not be parsed. */
+  top_suspect: ComponentId | null
+  tier: Tier | null
+  mode?: string
+  /**
+   * `run` — still in this API process, so it carries its full verdict objects.
+   * `ledger` — recovered from disk after a restart; answers from the ledger alone.
+   */
+  source: 'run' | 'ledger'
+}
+
 export interface ChatResponse {
   answer: string
   /**
    * `llm` — a real model answered. `cached` — a previous identical question in this
    * run, replayed for $0. `deterministic` — no key, OFFLINE, or the spend cap tripped,
-   * so the retrieved facts are quoted directly. Never an error: chat degrades.
+   * so the retrieved facts are quoted directly. `refused` — the question was not about
+   * this incident and was declined WITHOUT a model call. Never an error: chat degrades.
    */
-  mode: 'llm' | 'cached' | 'deterministic'
+  mode: 'llm' | 'cached' | 'deterministic' | 'refused'
   /** Every [fact-...] in `answer` — each one resolves in this run's ledger. */
   citations: FactId[]
   /** Citations that did NOT resolve; their claims were deleted from `answer`. */
