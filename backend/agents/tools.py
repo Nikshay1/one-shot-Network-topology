@@ -113,7 +113,13 @@ class GetEventsOut(_Model):
 
 class GetLedgerIn(_Model):
     component_id: str | None = None
-    kind: str | None = None
+    # A LITERAL, not a str. As a free string this had no enum in the function spec, so
+    # the model could not know what a kind IS — and the narrator guessed `kind="fact"`
+    # and `kind="hypothesis"`, got `{"records": []}` for both, concluded the run had no
+    # evidence, and emitted a report of six empty headings. The filter was doing exactly
+    # what it was told; nobody had told the model what to say. The literal puts the
+    # twelve real kinds in the schema, where the API enforces them.
+    kind: LedgerKind | None = None
     hypothesis_id: str | None = None
     limit: int = Field(default=50, ge=1, le=500)
 
@@ -215,6 +221,11 @@ def _rows_to_envelopes(df) -> list[EventEnvelope]:
 
 
 def _get_anomalies(inp: GetAnomaliesIn, ctx: ToolContext) -> GetAnomaliesOut:
+    """Every anomaly detection found in this case. Omit the filters to see them all.
+
+    Each carries the component it was seen on, its window, and the event ids that
+    evidence it — those ids are what `file_finding` expects you to cite.
+    """
     items = ctx.anomalies
     if inp.component_id is not None:
         items = [a for a in items if a.component_id == inp.component_id]
@@ -224,10 +235,21 @@ def _get_anomalies(inp: GetAnomaliesIn, ctx: ToolContext) -> GetAnomaliesOut:
 
 
 def _get_candidates(inp: GetCandidatesIn, ctx: ToolContext) -> GetCandidatesOut:
+    """The deterministic ranking as it stands right now — your starting point.
+
+    This is what the scorer already believes before you spend anything. It is not the
+    answer and it is not final: your job is to find the evidence that moves it.
+    """
     return GetCandidatesOut(candidates=ctx.ranked())
 
 
 def _check_path(inp: CheckPathIn, ctx: ToolContext) -> CheckPathOut:
+    """Is there a dependency path from `src` to `dst`? Free.
+
+    Direction matters and is easy to get backwards: an edge A -> B means "A calls B",
+    so a fault in B shows symptoms in A. To ask "could this suspect explain that
+    symptom?", check a path from the SYMPTOM to the SUSPECT.
+    """
     g = ctx.topology
     if inp.src not in g or inp.dst not in g:
         return CheckPathOut(path_exists=False, path=[],
@@ -247,6 +269,11 @@ def _check_path(inp: CheckPathIn, ctx: ToolContext) -> CheckPathOut:
 
 
 def _get_topology_summary(inp: GetTopologySummaryIn, ctx: ToolContext) -> GetTopologySummaryOut:
+    """The case's dependency graph: every component, and whether it is instrumented.
+
+    An uninstrumented component emits no telemetry, so it can never look anomalous —
+    the quietest node on the graph may be the broken one.
+    """
     g = ctx.topology
     nodes = [{"id": n, "instrumented": bool(g.nodes[n].get("instrumented", True))}
              for n in sorted(g.nodes)]
@@ -255,6 +282,12 @@ def _get_topology_summary(inp: GetTopologySummaryIn, ctx: ToolContext) -> GetTop
 
 
 def _get_events(inp: GetEventsIn, ctx: ToolContext) -> GetEventsOut:
+    """Fetch raw telemetry events by id, to read the evidence behind an anomaly.
+
+    Ids come from an anomaly's `evidence_event_ids`. Scoped to this case: an event id
+    is only unique within a case, so ids from elsewhere resolve to nothing. Max 10 per
+    call; anything not found comes back in `missing` rather than failing the call.
+    """
     df = ctx.store.get_by_ids(inp.event_ids, case_id=ctx.case_id)
     events = _rows_to_envelopes(df)
     found = {e.event_id for e in events}
@@ -263,6 +296,14 @@ def _get_events(inp: GetEventsIn, ctx: ToolContext) -> GetEventsOut:
 
 
 def _get_ledger(inp: GetLedgerIn, ctx: ToolContext) -> GetLedgerOut:
+    """Read this run's evidence ledger. Omit every filter to see all the evidence.
+
+    Filters are AND-ed and exact-match. `kind` must be one of the twelve ledger kinds
+    (anomaly_observed, twin_result, counterfactual_result, hypothesis_scored, ...) —
+    it is not a free-text search. An empty result means no fact matched THOSE FILTERS,
+    not that the run has no evidence: call again with fewer filters before concluding
+    anything is missing.
+    """
     return GetLedgerOut(records=ctx.ledger.query(
         component_id=inp.component_id, kind=inp.kind,
         hypothesis_id=inp.hypothesis_id, limit=inp.limit,
@@ -270,6 +311,13 @@ def _get_ledger(inp: GetLedgerIn, ctx: ToolContext) -> GetLedgerOut:
 
 
 def _run_counterfactual(inp: RunCounterfactualIn, ctx: ToolContext) -> RunCounterfactualOut:
+    """EXPENSIVE (1 point). Delete a suspect and ask whether the incident still makes sense.
+
+    Returns the percentage of anomalies the OTHER candidates still explain without it.
+    High means the suspect was redundant — the incident works fine without it, so it is
+    probably a victim. Low means it was load-bearing. This is the single check that
+    separates a real cause from a coincidence, so spend it where it discriminates.
+    """
     ranked = ctx.ranked()
     reach_by = {h.suspect_component: reachable_upstream(ctx.topology, h.suspect_component)
                 for h in ranked}
@@ -288,6 +336,13 @@ def _run_counterfactual(inp: RunCounterfactualIn, ctx: ToolContext) -> RunCounte
 
 
 def _run_twin(inp: RunTwinIn, ctx: ToolContext) -> RunTwinOut:
+    """EXPENSIVE (2 points). Simulate this fault on this component and compare to reality.
+
+    Injects `fault_type` into a SimPy model of the topology and scores how closely the
+    simulated symptom signature matches the observed one: match / partial / mismatch.
+    A match is the only thing that can lift a hypothesis to CONFIRMED; a mismatch never
+    dismisses one on its own.
+    """
     from backend.twin.runner import twin
     block = twin(ctx.case_id, inp.component, inp.fault_type,
                  store_root=ctx.store.root, ledger=ctx.ledger)
@@ -330,6 +385,13 @@ def _rehearse_fix(inp: RehearseFixIn, ctx: ToolContext) -> RehearseFixOut:
 
 
 def _file_finding(inp: FileFindingIn, ctx: ToolContext) -> FileFindingOut:
+    """Write a conclusion into the evidence ledger. Your ONLY way to change anything.
+
+    Validated before it is filed: `kind` must be a real ledger kind, every component
+    must exist in this case's topology, and every cited event id must resolve in THIS
+    case. An invalid finding is rejected with a reason rather than filed — cite ids you
+    actually read, not ids you expect to exist.
+    """
     if inp.kind not in _LEDGER_KINDS:
         return FileFindingOut(ok=False, error="invalid_kind",
                               detail=f"{inp.kind!r} is not a valid LedgerRecord kind")

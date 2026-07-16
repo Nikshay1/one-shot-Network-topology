@@ -13,6 +13,7 @@ tool, and `tools` is an explicit allow-list checked on every decision.
 from __future__ import annotations
 
 import json
+import textwrap
 import os
 import time
 from dataclasses import dataclass, field
@@ -154,14 +155,24 @@ class AgentResult:
 
 
 def tool_specs(names: list[str]) -> list[dict]:
+    """Turn the typed registry into OpenAI function specs.
+
+    The description is the WHOLE docstring, not its first line. It used to be
+    `.split("\\n")[0]`, which quietly deleted every caveat anyone wrote — including
+    "an empty result means no fact matched THOSE FILTERS, not that the run has no
+    evidence", which is the exact misreading that made a live narrator file a report
+    of six empty headings. The spec is the only thing the model knows about a tool;
+    truncating it to one line is choosing to tell it less.
+    """
     specs = []
     for n in names:
         t = REGISTRY[n]
+        doc = textwrap.dedent(t.fn.__doc__ or "").strip()
         specs.append({
             "type": "function",
             "function": {
                 "name": n,
-                "description": (t.fn.__doc__ or n).strip().split("\n")[0],
+                "description": doc or n,
                 "parameters": t.input_model.model_json_schema(),
             },
         })
