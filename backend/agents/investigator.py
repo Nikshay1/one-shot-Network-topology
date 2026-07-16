@@ -28,6 +28,7 @@ from backend.agents.harness import STATUS_COMPLETED, AgentResult, LLM, run_agent
 from backend.agents.tools import ToolContext
 from backend.ingest.store import EventStore
 from backend.ledger.ledger import Ledger
+from backend.ledger.seed import seed_from_anomalies
 from backend.localize.blast import blast_radius
 from backend.models import RankedHypothesis
 from backend.rank import autopilot as autopilot_mod
@@ -155,6 +156,11 @@ def investigate_and_rescore(
     # a run starts with a CLEAN ledger: inheriting a previous run's facts would both
     # fake the "did this agent contribute?" check and drift the transcript cache key.
     ledger = Ledger(run_id, case_id, ledger_dir, fresh=True)
+    # ...and then immediately holds what detection SAW. Without this the ledger only
+    # ever recorded conclusions, so the narrator — whose single tool is the ledger —
+    # truthfully reported that nothing was detected. Seeded BEFORE the agent runs, so
+    # `get_ledger` shows it the evidence too rather than only its own findings.
+    seed_from_anomalies(ledger, anomalies)
     ctx = ToolContext(case_id=case_id, store=store, topology=topology, anomalies=anomalies,
                       blast=blast_radius(topology, {a.component_id for a in anomalies}),
                       ledger=ledger)

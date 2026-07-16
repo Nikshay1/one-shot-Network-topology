@@ -22,6 +22,7 @@ import networkx as nx
 from backend.ingest.store import EventStore
 from backend.ledger.ledger import Ledger
 from backend.localize.blast import blast_radius, reachable_upstream
+from backend.ledger.seed import seed_from_anomalies
 from backend.models import AnomalyEvent, RankedHypothesis
 from backend.rank import tiers
 from backend.rank.counterfactual import remove_and_explain, score_multiplier
@@ -65,6 +66,10 @@ def run(
     anomalies = load_anomalies(case_id, anomalies_dir)
     run_id = run_id or case_id
     ledger = Ledger(run_id, case_id, ledger_dir)
+    # The observations, before any conclusion drawn from them. Idempotent: the
+    # investigator seeds its fresh ledger and then hands this same ledger to the
+    # autopilot on the rule-11 fallback, which would otherwise file it all twice.
+    seed_from_anomalies(ledger, anomalies)
 
     if twin_fn is None and twin_enabled:  # default: the SimPy twin (Step 7), for the top-1 suspect
         from backend.twin.runner import twin as _twin
